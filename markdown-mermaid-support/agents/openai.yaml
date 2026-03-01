@@ -1,0 +1,4 @@
+interface:
+  display_name: "Markdown Diagram + Code Evidence"
+  short_description: "Build Mermaid diagrams and clickable file:line code evidence in Markdown"
+  default_prompt: "Analyze the Markdown document, validate diagram correctness, and enrich code references into clickable links with snippet evidence."
