@@ -1,0 +1,4 @@
+interface:
+  display_name: "Server Skill GitHub Uploader"
+  short_description: "Incrementally sync local skills to GitHub repo"
+  default_prompt: "Use $server-github-skill-upload to incrementally sync selected local skills to the target GitHub repository from this server."
