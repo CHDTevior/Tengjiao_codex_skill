@@ -1,0 +1,3 @@
+interface:
+  display_name: "DL Plan Harness"
+  short_description: "Prepare Codex DL harness from plan files"
