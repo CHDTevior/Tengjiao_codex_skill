@@ -18,8 +18,7 @@ Translate an uploaded research plan into a Codex-generated file manifest and sca
 - `.codex-research/prompts/initializer.md`
 - `.codex-research/prompts/worker.md`
 - `.codex-research/workflow/CODEX.md`
-- `.codex-research/run_one_task.sh`
-- `.codex-research/run_plan.sh`
+- `.codex-research/execution_guide.zh-CN.md`
 - `.codex-research/MECHANISM.md`
 
 ## Optional Files
@@ -35,4 +34,5 @@ Translate an uploaded research plan into a Codex-generated file manifest and sca
 - Keep `task_plan.json` as the task-level execution gate for automation scripts.
 - Do not reduce generation to keyword-only rules for advanced planning fields (metrics, runtime environment, scheduler workflow, validation protocol).
 - Generate scaffolding with one Codex bundle call (bootstrap/all mode); the response must return metadata and all required files in order.
-- Skill-internal and generated `.codex-research/*` scripts should preserve intended workflow logic and must not auto-inject execution-bypass flags.
+- Do not generate `.codex-research/run_one_task.sh` or `.codex-research/run_plan.sh`; keep usage guidance in `.codex-research/execution_guide.zh-CN.md`.
+- Skill-internal generation should preserve intended workflow logic and must not auto-inject execution-bypass flags into generated `.codex-research/*` files.

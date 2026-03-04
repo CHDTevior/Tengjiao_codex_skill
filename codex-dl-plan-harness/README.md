@@ -55,15 +55,12 @@
 4. 写入目标目录  
 将生成内容落盘到 `<target>/.codex-research/`，并设置 shell 文件可执行位。
 
-5. 运行命令预检（all/bootstrap）  
-在生成结束后自动预检：
-- `run_one_task.sh` / `run_plan.sh` 文件存在
-- `bash -n` 脚本语法检查
-- 文档给出的两条运行命令做 shell 命令行语法检查
-
-6. 给出执行下一步  
-单轮：`run_one_task.sh`。  
-多轮：`run_plan.sh`。
+5. 给出执行下一步（中文指南）  
+不再生成 `run_one_task.sh` / `run_plan.sh`。生成结束后，统一通过
+`.codex-research/execution_guide.zh-CN.md` 指导后续使用方式，包括：
+- 先阅读代表当前进度的文档：`task_plan.json`、`session_progress.md`、`decision_log.md`
+- 流程性问题查看：`.codex-research/workflow/CODEX.md`
+- 在 Codex 中按 one-session-one-task 手动推进任务并回写文档
 
 ## 3. 输出是什么
 
@@ -87,8 +84,6 @@
 - `.codex-research/prompts/initializer.md`
 - `.codex-research/prompts/worker.md`
 - `.codex-research/workflow/CODEX.md`
-- `.codex-research/run_one_task.sh`
-- `.codex-research/run_plan.sh`
 
 以及 Codex 判断需要的附加文件（例如 Slurm、metric、tracking、dataset、inference 相关配置），统一放在 `.codex-research/` 下并写入 `required_files.json`。
 
@@ -111,16 +106,18 @@ bash scripts/prepare_from_plan.sh \
   --codex-model <model_name>
 ```
 
-### 4.3 单次执行一个任务
+### 4.3 查看中文执行指南
 
 ```bash
-bash <project_root>/.codex-research/run_one_task.sh --target <project_root>
+cat <project_root>/.codex-research/execution_guide.zh-CN.md
 ```
 
-### 4.4 连续执行多轮
+### 4.4 给 Codex 的推荐指令（示例）
 
-```bash
-bash <project_root>/.codex-research/run_plan.sh 5 --target <project_root>
+```text
+请先阅读 .codex-research/task_plan.json、.codex-research/session_progress.md、
+.codex-research/decision_log.md，并参考 .codex-research/workflow/CODEX.md 的流程，
+选择一个 passes=false 的任务推进；完成后回写 progress/decision，并仅在有验证证据时更新 passes。
 ```
 
 ## 5. 设计约束

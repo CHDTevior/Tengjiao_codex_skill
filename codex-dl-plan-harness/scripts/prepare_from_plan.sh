@@ -77,38 +77,6 @@ invoke_framework() {
   esac
 }
 
-validate_generated_run_commands() {
-  local target_root="$1"
-  local run_one="$target_root/.codex-research/run_one_task.sh"
-  local run_plan="$target_root/.codex-research/run_plan.sh"
-
-  if [[ ! -f "$run_one" ]]; then
-    echo "[error] missing generated script: $run_one" >&2
-    return 1
-  fi
-  if [[ ! -f "$run_plan" ]]; then
-    echo "[error] missing generated script: $run_plan" >&2
-    return 1
-  fi
-
-  bash -n "$run_one"
-  bash -n "$run_plan"
-
-  local cmd_one=(bash "$run_one" --target "$target_root")
-  local cmd_plan=(bash "$run_plan" 5 --target "$target_root")
-  local cmd_one_str=""
-  local cmd_plan_str=""
-
-  printf -v cmd_one_str '%q ' "${cmd_one[@]}"
-  printf -v cmd_plan_str '%q ' "${cmd_plan[@]}"
-
-  bash -n -c "$cmd_one_str"
-  bash -n -c "$cmd_plan_str"
-
-  echo "[check] validated run command: ${cmd_one[*]}"
-  echo "[check] validated run command: ${cmd_plan[*]}"
-}
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)
@@ -227,13 +195,9 @@ fi
 
 invoke_framework "$ACTIVE_PLAN" "$TARGET"
 
-if [[ "$MODE" == "all" || "$MODE" == "bootstrap" ]]; then
-  validate_generated_run_commands "$TARGET"
-fi
-
 echo "[ok] mode=$MODE source_plan=$PLAN active_plan=$ACTIVE_PLAN target=$TARGET codex_plan_stage=$CODEX_PLAN_STAGE"
 
 if [[ "$MODE" == "all" || "$MODE" == "bootstrap" ]]; then
-  echo "[next] run one task: bash \"$TARGET/.codex-research/run_one_task.sh\" --target \"$TARGET\""
-  echo "[next] run N tasks: bash \"$TARGET/.codex-research/run_plan.sh\" 5 --target \"$TARGET\""
+  echo "[next] read execution guide: \"$TARGET/.codex-research/execution_guide.zh-CN.md\""
+  echo "[next] Codex should read representative task/progress docs and workflow: \"$TARGET/.codex-research/workflow/CODEX.md\""
 fi

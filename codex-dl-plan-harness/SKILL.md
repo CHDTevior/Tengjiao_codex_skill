@@ -22,11 +22,11 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - If `--target` is missing, stop and ask for the target output directory.
 - Default to `--codex-plan-stage required` so plan alignment must pass before harness generation.
 - Framework generation must be Codex-driven (no fallback to keyword-only extraction for required scaffolding decisions).
-- Skill runtime `codex exec` invocations (plan alignment + file generation) should not auto-inject execution bypass flags into generated `.codex-research/*` scripts.
+- Skill runtime `codex exec` invocations (plan alignment + file generation) should not auto-inject execution bypass flags into generated `.codex-research/*` files.
 - Skill output must include a Chinese execution guide: `.codex-research/execution_guide.zh-CN.md`.
-- Commands provided for `run_one_task.sh` / `run_plan.sh` must be preflight-validated during generation.
+- Do not generate `.codex-research/run_one_task.sh` or `.codex-research/run_plan.sh`; execution guidance should stay in `.codex-research/execution_guide.zh-CN.md`.
+- The Chinese execution guide should instruct Codex to read representative task/progress docs first (for example `.codex-research/task_plan.json`, `.codex-research/session_progress.md`, `.codex-research/decision_log.md`) and use `.codex-research/workflow/CODEX.md` for process-level guidance.
 - Use absolute paths when reporting generated artifacts.
-- Ensure generated preflight contracts are internally consistent: if `run_one_task.sh` requires a path/script, generation must create it (no dangling required paths).
 - Environment execution examples must use non-login conda shells when wrapping commands (prefer `conda run -n <env> bash -c ...`, avoid `bash -lc` to prevent env reset).
 - Generated harness should be resilient in fresh git repos (no `HEAD` yet): avoid hard failure when `git rev-parse HEAD` is unavailable.
 - Do not fail artifact validation solely because CUDA is visible on host; fail only on actual contract violations of generated run outputs.
@@ -44,16 +44,10 @@ scripts/prepare_from_plan.sh \
 
 This defaults to Codex alignment first, then framework generation.
 
-After generation, run step-by-step task execution:
+After generation, read the Chinese execution guide:
 
 ```bash
-bash <project_root>/.codex-research/run_one_task.sh --target <project_root>
-```
-
-Or run multiple iterations:
-
-```bash
-bash <project_root>/.codex-research/run_plan.sh 5 --target <project_root>
+cat <project_root>/.codex-research/execution_guide.zh-CN.md
 ```
 
 ### Only extract required file manifest
@@ -91,13 +85,11 @@ scripts/prepare_from_plan.sh \
 - Confirm `.codex-research/MECHANISM.md` exists and references the source plan path.
 - Confirm `.codex-research/execution_guide.zh-CN.md` exists.
 - Confirm `.codex-research/plan/normalized_plan.md` exists when Codex alignment is enabled.
-- Confirm shell scripts are executable (`init.sh`, `checks/smoke_test.sh`, `run_one_task.sh`, `run_plan.sh`).
-- Confirm generated run commands are preflight-validated (script existence + `bash -n` + command-line syntax check).
+- Confirm shell scripts are executable (`init.sh`, `checks/smoke_test.sh`).
 - Confirm required scaffold directories exist at generation time: `src/`, `scripts/`, `artifacts/`, `artifacts/data/`, `artifacts/logs/`, `artifacts/models/`.
 - Confirm `.codex-research/checks/validate_env.sh` exists and passes basic checks in target env.
 - Confirm `scripts/setup_env.sh` exists and is executable; if delegating to `.codex-research/scripts/set_env.sh`, ensure both paths are present.
-- Confirm `run_one_task.sh` does not crash on empty git history (fresh repo without commits).
-- Confirm post-check path can pass with deterministic minimal artifacts when no task hook is present (or explicitly fail with actionable message).
+- Confirm `.codex-research/execution_guide.zh-CN.md` explicitly tells Codex to read task/progress docs and `.codex-research/workflow/CODEX.md`.
 
 ## Notes
 
