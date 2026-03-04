@@ -133,7 +133,7 @@ CMD=(
   codex exec
   --skip-git-repo-check
   --ephemeral
-  --sandbox read-only
+  --dangerously-bypass-approvals-and-sandbox
   -C "$TARGET"
   --output-last-message "$RAW_OUTPUT"
 )

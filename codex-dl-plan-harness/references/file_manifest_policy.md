@@ -35,3 +35,5 @@ Translate an uploaded research plan into a Codex-generated file manifest and sca
 - Keep `task_plan.json` as the task-level execution gate for automation scripts.
 - Do not reduce generation to keyword-only rules for advanced planning fields (metrics, runtime environment, scheduler workflow, validation protocol).
 - Generate scaffolding with one-file-per-Codex-call after analysis (avoid one massive single-call file bundle generation).
+- Skill-internal `codex exec` calls must use non-interactive full-access mode (`--dangerously-bypass-approvals-and-sandbox`).
+- Generated `.codex-research/*` scripts should preserve intended workflow logic and are not forcibly rewritten only for execution-flag injection.

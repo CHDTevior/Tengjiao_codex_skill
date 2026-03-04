@@ -22,6 +22,8 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - If `--target` is missing, stop and ask for the target output directory.
 - Default to `--codex-plan-stage required` so plan alignment must pass before harness generation.
 - Framework generation must be Codex-driven (no fallback to keyword-only extraction for required scaffolding decisions).
+- Skill runtime `codex exec` invocations (plan alignment + file generation) must run in non-interactive full-access mode (`--dangerously-bypass-approvals-and-sandbox`).
+- Do not force or rewrite generated `.codex-research/*` script logic solely to inject execution flags.
 - Use absolute paths when reporting generated artifacts.
 
 ## Commands
