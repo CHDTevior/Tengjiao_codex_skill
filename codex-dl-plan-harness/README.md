@@ -6,8 +6,8 @@
 
 关键变化：
 - 现在不再用关键词/任务行的规则提取来决定文件内容。
-- 现在由 Codex 直接生成文件包，然后本地脚本做结构校验与落盘。
-- 所有 skill 内部 `codex exec` 调用默认使用 full access 对应参数 `--dangerously-bypass-approvals-and-sandbox`。
+- 现在由 Codex 在一次调用中返回完整文件包（含元数据+按顺序文件内容），然后本地脚本做结构校验与落盘。
+- 生成流程不再自动注入 `--dangerously-bypass-approvals-and-sandbox`。
 
 ## 1. 需要什么输入
 
@@ -39,17 +39,18 @@
 调用 `scripts/normalize_plan_with_codex.sh`，让 Codex 把原始计划整理成结构化 `normalized_plan.md`，并做 section/格式校验。
 
 3. Codex 生成文件包（核心）  
-调用 `scripts/codex_research_harness.py`。该脚本使用 `codex exec` + JSON schema，让 Codex 直接返回：
+调用 `scripts/codex_research_harness.py`。在 `bootstrap/all` 模式下，该脚本使用一次 `codex exec` + JSON schema，让 Codex 直接返回：
 - `required_files`
 - `feature_list`
 - `task_plan`
-- 单文件内容（逐文件生成）
+- `files`（按 `required_files` 顺序的完整文件包）
 
 本地脚本会进行校验：
 - 必需核心文件必须齐全
 - 所有路径必须位于 `.codex-research/`
 - `feature_list/task_plan` 结构合法且默认 `passes=false`
-- 生成的 shell 中 `codex exec` 默认补齐 `--dangerously-bypass-approvals-and-sandbox`
+- `files` 与 `required_files` 路径集合与顺序必须一致
+- 不改写生成脚本去强行注入执行 bypass 参数
 
 4. 写入目标目录  
 将生成内容落盘到 `<target>/.codex-research/`，并设置 shell 文件可执行位。

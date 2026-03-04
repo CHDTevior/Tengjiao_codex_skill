@@ -9,7 +9,7 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 
 1. Require user-provided plan path and target output directory.
 2. Run Codex plan alignment (`scripts/normalize_plan_with_codex.sh`) to rewrite plan into deterministic structure.
-3. Run `scripts/prepare_from_plan.sh` so `codex_research_harness.py` does one Codex analysis pass, then generates scaffold files with one Codex call per file (instead of one giant file bundle call).
+3. Run `scripts/prepare_from_plan.sh` so `codex_research_harness.py` uses one Codex bundle call (bootstrap/all mode) that returns required metadata plus all scaffold files in order.
 4. Verify generated files under `.codex-research/`.
 5. Report what was generated, and list any missing user-provided values.
 
@@ -22,8 +22,7 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - If `--target` is missing, stop and ask for the target output directory.
 - Default to `--codex-plan-stage required` so plan alignment must pass before harness generation.
 - Framework generation must be Codex-driven (no fallback to keyword-only extraction for required scaffolding decisions).
-- Skill runtime `codex exec` invocations (plan alignment + file generation) must run in non-interactive full-access mode (`--dangerously-bypass-approvals-and-sandbox`).
-- Do not force or rewrite generated `.codex-research/*` script logic solely to inject execution flags.
+- Skill runtime `codex exec` invocations (plan alignment + file generation) should not auto-inject execution bypass flags into generated `.codex-research/*` scripts.
 - Skill output must include a Chinese execution guide: `.codex-research/execution_guide.zh-CN.md`.
 - Commands provided for `run_one_task.sh` / `run_plan.sh` must be preflight-validated during generation.
 - Use absolute paths when reporting generated artifacts.
