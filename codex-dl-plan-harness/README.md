@@ -1,100 +1,93 @@
 # codex-dl-plan-harness
 
-一个面向 Codex 的深度学习研发计划脚手架生成器。
+面向 Codex 的深度学习研发计划脚手架生成器。
 
-目标：把一份“研究/开发计划文档”转换成可执行的长期开发机制，包括任务清单、会话规则、检查脚本、以及自动化执行脚本（一次一个任务或循环执行）。
+它的定位是：把一份研究计划（plan）转换成完整的 `.codex-research/` 运行机制文件，并且支持后续按任务逐步执行。
 
-## 1. 核心逻辑
+关键变化：
+- 现在**不再**用关键词/任务行的规则提取来决定文件内容。
+- 现在由 **Codex 直接生成文件包**，然后本地脚本做结构校验与落盘。
 
-- 先把原始计划整理成结构化计划（可选但推荐，使用 Codex 对齐）。
-- 从计划中提取关键信号（如 slurm、wandb、evaluation 等）与任务条目。
-- 生成 `.codex-research/` 目录下的标准文件（spec、task_plan、checks、prompts、workflow、run scripts 等）。
-- 通过 `run_one_task.sh` 强制“一次只做一个任务”的执行节奏。
-- 通过 `run_plan.sh` 批量循环多轮执行，直到任务完成或达到轮数上限。
+## 1. 需要什么输入
 
-## 2. 需要的输入
-
-最少需要两个输入：
+最少输入：
 
 1. `--plan`：你的计划文件路径（Markdown 或文本）
-2. `--target`：目标项目根目录（脚手架输出位置）
+2. `--target`：目标项目根目录
 
-可选输入：
+常用可选参数：
 
-- `--codex-plan-stage`：`required|auto|off`
-  - `required`：必须先完成 Codex 对齐（默认）
-  - `auto`：尝试对齐，失败则回退原计划
-  - `off`：不做对齐，直接使用原计划
-- `--codex-model`：指定 Codex 模型
-- `--force`：覆盖已存在文件
-- `--mode`：`all|extract|bootstrap|gen-doc`
+- `--codex-plan-stage required|auto|off`
+  - `required`：必须先完成计划标准化（默认）
+  - `auto`：尝试标准化，失败回退原计划
+  - `off`：跳过标准化
+- `--codex-model`：指定 Codex 模型（会传给对齐和生成两个阶段）
+- `--mode all|extract|bootstrap|gen-doc`
+- `--force`：覆盖已有文件
 
-## 3. 一步步处理流程
+## 2. 会经过什么处理
 
-入口脚本：`scripts/prepare_from_plan.sh`
+入口：`scripts/prepare_from_plan.sh`
 
-处理链路如下：
+处理链路：
 
-1. 参数校验
-- 检查 `--plan`、`--target` 是否存在
-- 检查基础脚本是否可用
+1. 参数和路径校验
+- 检查 `--plan`、`--target`、脚本可用性
 
-2. 计划对齐（可选）
+2. 计划标准化（可选）
 - 调用 `scripts/normalize_plan_with_codex.sh`
-- 让 Codex 输出标准化结构的 `normalized_plan.md`
-- 验证 section 完整性与格式约束
+- 让 Codex 把原始计划整理成结构化 `normalized_plan.md`
+- 做 section/格式校验
 
-3. 生成清单与脚手架
+3. Codex 生成文件包（核心）
 - 调用 `scripts/codex_research_harness.py`
-- 提取 tasks、headings、signals
-- 生成 `required_files` / `feature_list` / `task_plan`
-- 根据模板写入 `.codex-research/*`
+- 该脚本使用 `codex exec` + JSON schema，让 Codex 直接返回：
+  - `required_files`
+  - `feature_list`
+  - `task_plan`
+  - `files`（每个文件的路径与内容）
+- 本地脚本进行校验：
+  - 必需核心文件必须齐全
+  - 所有路径必须位于 `.codex-research/`
+  - `feature_list/task_plan` 结构合法且默认 `passes=false`
 
-4. 生成机制说明
-- 生成 `.codex-research/MECHANISM.md`
+4. 写入目标目录
+- 将 Codex 生成内容落盘到 `<target>/.codex-research/`
+- 设置 shell 文件可执行位
 
-5. 给出下一步执行命令
-- 运行单任务：`.codex-research/run_one_task.sh`
-- 运行多轮：`.codex-research/run_plan.sh`
+5. 给出执行下一步
+- 单轮：`run_one_task.sh`
+- 多轮：`run_plan.sh`
 
-## 4. 输出是什么
+## 3. 输出是什么
 
-默认 `--mode all` 会在 `<target>/.codex-research/` 生成：
+默认 `--mode all` 会输出：
 
 核心文件：
-
-- `research_spec.md`
-- `required_files.json`
-- `required_files.generated.json`
-- `feature_list.json`
-- `task_plan.json`
-- `session_progress.md`
-- `decision_log.md`
-- `run_registry.jsonl`
-- `MECHANISM.md`
+- `.codex-research/research_spec.md`
+- `.codex-research/feature_list.json`
+- `.codex-research/task_plan.json`
+- `.codex-research/required_files.json`
+- `.codex-research/required_files.generated.json`
+- `.codex-research/session_progress.md`
+- `.codex-research/decision_log.md`
+- `.codex-research/run_registry.jsonl`
+- `.codex-research/MECHANISM.md`
 
 执行与流程文件：
+- `.codex-research/init.sh`
+- `.codex-research/checks/smoke_test.sh`
+- `.codex-research/prompts/initializer.md`
+- `.codex-research/prompts/worker.md`
+- `.codex-research/workflow/CODEX.md`
+- `.codex-research/run_one_task.sh`
+- `.codex-research/run_plan.sh`
 
-- `init.sh`
-- `checks/smoke_test.sh`
-- `workflow/CODEX.md`
-- `run_one_task.sh`
-- `run_plan.sh`
-- `prompts/initializer.md`
-- `prompts/worker.md`
+以及 Codex 判断需要的附加文件（例如 Slurm、metric、tracking、dataset、inference 相关配置），统一放在 `.codex-research/` 下并写入 `required_files.json`。
 
-可选文件（按计划信号触发）：
+## 4. 常用命令
 
-- `slurm/train.sbatch`, `slurm/debug.sbatch`
-- `config/wandb.yaml`
-- `config/hf_dataset.yaml`
-- `config/webdataset.yaml`
-- `config/eval.yaml`
-- `config/inference.yaml`
-
-## 5. 常用命令
-
-### 5.1 生成完整脚手架
+### 4.1 生成完整脚手架
 
 ```bash
 bash scripts/prepare_from_plan.sh \
@@ -102,26 +95,36 @@ bash scripts/prepare_from_plan.sh \
   --target <project_root>
 ```
 
-### 5.2 生成后，按任务执行（一次一个）
+### 4.2 指定模型生成
+
+```bash
+bash scripts/prepare_from_plan.sh \
+  --plan <uploaded_plan_file> \
+  --target <project_root> \
+  --codex-model <model_name>
+```
+
+### 4.3 单次执行一个任务
 
 ```bash
 bash <project_root>/.codex-research/run_one_task.sh --target <project_root>
 ```
 
-### 5.3 连续执行 N 轮
+### 4.4 连续执行多轮
 
 ```bash
 bash <project_root>/.codex-research/run_plan.sh 5 --target <project_root>
 ```
 
-## 6. 执行约束（建议遵守）
+## 5. 设计约束
 
-- 每个会话只处理一个 `passes=false` 任务。
-- 无测试/命令证据，不要将任务标记为 `passes=true`。
-- 如果阻塞（凭据/外部依赖等），保持 `passes=false`，写明阻塞原因并停止。
+- 一次会话只做一个任务。
+- 没有测试/命令证据，不要改 `passes=true`。
+- 如果阻塞，保持 `passes=false` 并记录阻塞原因。
+- 高复杂度字段（metric、环境、slurm、验证流程）由 Codex 基于全计划上下文生成，不退回关键词规则。
 
-## 7. 依赖
+## 6. 依赖
 
 - `bash`
 - `python3`
-- `codex` CLI（用于计划对齐与任务执行）
+- `codex` CLI

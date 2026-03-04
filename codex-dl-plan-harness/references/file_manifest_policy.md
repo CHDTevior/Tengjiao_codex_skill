@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Translate an uploaded research plan into a deterministic file manifest for the Codex DL long-running harness.
+Translate an uploaded research plan into a Codex-generated file manifest and scaffold bundle for the Codex DL long-running harness.
 
 ## Core Files (always generated)
 
@@ -22,14 +22,10 @@ Translate an uploaded research plan into a deterministic file manifest for the C
 - `.codex-research/run_plan.sh`
 - `.codex-research/MECHANISM.md`
 
-## Keyword-Triggered Optional Files
+## Optional Files
 
-- `slurm|sbatch|srun|h100|a100|hpc` -> Slurm templates
-- `wandb` -> `config/wandb.yaml`
-- `huggingface|hf dataset` -> `config/hf_dataset.yaml`
-- `webdataset|shard` -> `config/webdataset.yaml`
-- `eval|metric|benchmark|fid|lpips|fvd` -> `config/eval.yaml`
-- `inference|serving|deployment|gradio` -> `config/inference.yaml`
+- Additional files (for metrics, environment setup, Slurm, tracking, data pipelines, inference) are decided by Codex from full plan context.
+- Optional files must still be generated under `.codex-research/` and listed in `required_files.json`.
 
 ## Operating Constraints
 
@@ -37,3 +33,4 @@ Translate an uploaded research plan into a deterministic file manifest for the C
 - Keep generated file paths stable for repeatable sessions.
 - Keep `feature_list.json` as the session completion gate.
 - Keep `task_plan.json` as the task-level execution gate for automation scripts.
+- Do not reduce generation to keyword-only rules for advanced planning fields (metrics, runtime environment, scheduler workflow, validation protocol).

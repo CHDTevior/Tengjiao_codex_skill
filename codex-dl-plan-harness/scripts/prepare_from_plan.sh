@@ -39,6 +39,11 @@ USAGE
 invoke_framework() {
   local active_plan="$1"
   local target_root="$2"
+  local framework_args=()
+
+  if [[ -n "$CODEX_MODEL" ]]; then
+    framework_args+=(--codex-model "$CODEX_MODEL")
+  fi
 
   case "$MODE" in
     extract)
@@ -46,23 +51,23 @@ invoke_framework() {
         OUT="$target_root/.codex-research/required_files.generated.json"
       fi
       mkdir -p "$(dirname "$OUT")"
-      python3 "$FRAMEWORK_SCRIPT" extract --plan "$active_plan" --out "$OUT"
+      python3 "$FRAMEWORK_SCRIPT" extract --plan "$active_plan" --target "$target_root" --out "$OUT" "${framework_args[@]}"
       ;;
     bootstrap)
       if [[ "$FORCE" -eq 1 ]]; then
-        python3 "$FRAMEWORK_SCRIPT" bootstrap --plan "$active_plan" --target "$target_root" --force
+        python3 "$FRAMEWORK_SCRIPT" bootstrap --plan "$active_plan" --target "$target_root" --force "${framework_args[@]}"
       else
-        python3 "$FRAMEWORK_SCRIPT" bootstrap --plan "$active_plan" --target "$target_root"
+        python3 "$FRAMEWORK_SCRIPT" bootstrap --plan "$active_plan" --target "$target_root" "${framework_args[@]}"
       fi
       ;;
     gen-doc)
-      python3 "$FRAMEWORK_SCRIPT" gen-doc --plan "$active_plan" --target "$target_root"
+      python3 "$FRAMEWORK_SCRIPT" gen-doc --plan "$active_plan" --target "$target_root" "${framework_args[@]}"
       ;;
     all)
       if [[ "$FORCE" -eq 1 ]]; then
-        python3 "$FRAMEWORK_SCRIPT" all --plan "$active_plan" --target "$target_root" --force
+        python3 "$FRAMEWORK_SCRIPT" all --plan "$active_plan" --target "$target_root" --force "${framework_args[@]}"
       else
-        python3 "$FRAMEWORK_SCRIPT" all --plan "$active_plan" --target "$target_root"
+        python3 "$FRAMEWORK_SCRIPT" all --plan "$active_plan" --target "$target_root" "${framework_args[@]}"
       fi
       ;;
     *)

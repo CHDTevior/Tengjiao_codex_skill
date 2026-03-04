@@ -9,7 +9,7 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 
 1. Require user-provided plan path and target output directory.
 2. Run Codex plan alignment (`scripts/normalize_plan_with_codex.sh`) to rewrite plan into deterministic structure.
-3. Run `scripts/prepare_from_plan.sh` to execute the framework against the aligned plan.
+3. Run `scripts/prepare_from_plan.sh` so `codex_research_harness.py` uses Codex to generate the full `.codex-research/` artifact bundle (instead of keyword/rule extraction).
 4. Verify generated files under `.codex-research/`.
 5. Report what was generated, and list any missing user-provided values.
 
@@ -21,6 +21,7 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - If `--plan` is missing, stop and ask for the uploaded plan path.
 - If `--target` is missing, stop and ask for the target output directory.
 - Default to `--codex-plan-stage required` so plan alignment must pass before harness generation.
+- Framework generation must be Codex-driven (no fallback to keyword-only extraction for required scaffolding decisions).
 - Use absolute paths when reporting generated artifacts.
 
 ## Commands
