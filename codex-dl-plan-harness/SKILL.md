@@ -27,6 +27,11 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - Skill output must include a Chinese execution guide: `.codex-research/execution_guide.zh-CN.md`.
 - Commands provided for `run_one_task.sh` / `run_plan.sh` must be preflight-validated during generation.
 - Use absolute paths when reporting generated artifacts.
+- Ensure generated preflight contracts are internally consistent: if `run_one_task.sh` requires a path/script, generation must create it (no dangling required paths).
+- Environment execution examples must use non-login conda shells when wrapping commands (prefer `conda run -n <env> bash -c ...`, avoid `bash -lc` to prevent env reset).
+- Generated harness should be resilient in fresh git repos (no `HEAD` yet): avoid hard failure when `git rev-parse HEAD` is unavailable.
+- Do not fail artifact validation solely because CUDA is visible on host; fail only on actual contract violations of generated run outputs.
+- T001 scaffold generation must include both `scripts/setup_env.sh` and `.codex-research/checks/validate_env.sh` when task plan requires them.
 
 ## Commands
 
@@ -89,12 +94,18 @@ scripts/prepare_from_plan.sh \
 - Confirm `.codex-research/plan/normalized_plan.md` exists when Codex alignment is enabled.
 - Confirm shell scripts are executable (`init.sh`, `checks/smoke_test.sh`, `run_one_task.sh`, `run_plan.sh`).
 - Confirm generated run commands are preflight-validated (script existence + `bash -n` + command-line syntax check).
+- Confirm required scaffold directories exist at generation time: `src/`, `scripts/`, `artifacts/`, `artifacts/data/`, `artifacts/logs/`, `artifacts/models/`.
+- Confirm `.codex-research/checks/validate_env.sh` exists and passes basic checks in target env.
+- Confirm `scripts/setup_env.sh` exists and is executable; if delegating to `.codex-research/scripts/set_env.sh`, ensure both paths are present.
+- Confirm `run_one_task.sh` does not crash on empty git history (fresh repo without commits).
+- Confirm post-check path can pass with deterministic minimal artifacts when no task hook is present (or explicitly fail with actionable message).
 
 ## Notes
 
 - Keep one-session-one-task discipline using `task_plan.json`.
 - Do not set `passes=true` without test evidence.
 - Regenerate files from the latest plan when scope changes.
+- Incident hardening (2026-03-04): prioritize preventing preflight/config mismatches that block first run before any task code executes.
 
 ## References
 
