@@ -8,6 +8,7 @@
 - 现在不再用关键词/任务行的规则提取来决定文件内容。
 - 现在由 Codex 在一次调用中返回完整文件包（含元数据+按顺序文件内容），然后本地脚本做结构校验与落盘。
 - 生成流程不再自动注入 `--dangerously-bypass-approvals-and-sandbox`。
+- 若生成 `.codex-research/workflow/CODEX.md`，脚本会自动确保其中包含 `GitHub 维护渠道`（Issues / Pull Requests / Discussions / Projects）段落，便于项目管理。
 
 ## 1. 需要什么输入
 
@@ -51,6 +52,7 @@
 - `feature_list/task_plan` 结构合法且默认 `passes=false`
 - `files` 与 `required_files` 路径集合与顺序必须一致
 - 不改写生成脚本去强行注入执行 bypass 参数
+- 若存在 `.codex-research/workflow/CODEX.md`，会自动补齐 GitHub 维护渠道章节（若已存在则不重复添加）
 
 4. 写入目标目录  
 将生成内容落盘到 `<target>/.codex-research/`，并设置 shell 文件可执行位。
