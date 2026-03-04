@@ -24,6 +24,8 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - Framework generation must be Codex-driven (no fallback to keyword-only extraction for required scaffolding decisions).
 - Skill runtime `codex exec` invocations (plan alignment + file generation) must run in non-interactive full-access mode (`--dangerously-bypass-approvals-and-sandbox`).
 - Do not force or rewrite generated `.codex-research/*` script logic solely to inject execution flags.
+- Skill output must include a Chinese execution guide: `.codex-research/execution_guide.zh-CN.md`.
+- Commands provided for `run_one_task.sh` / `run_plan.sh` must be preflight-validated during generation.
 - Use absolute paths when reporting generated artifacts.
 
 ## Commands
@@ -83,8 +85,10 @@ scripts/prepare_from_plan.sh \
 - Confirm `.codex-research/feature_list.json` is valid JSON list.
 - Confirm `.codex-research/task_plan.json` has a valid top-level `tasks` list.
 - Confirm `.codex-research/MECHANISM.md` exists and references the source plan path.
+- Confirm `.codex-research/execution_guide.zh-CN.md` exists.
 - Confirm `.codex-research/plan/normalized_plan.md` exists when Codex alignment is enabled.
 - Confirm shell scripts are executable (`init.sh`, `checks/smoke_test.sh`, `run_one_task.sh`, `run_plan.sh`).
+- Confirm generated run commands are preflight-validated (script existence + `bash -n` + command-line syntax check).
 
 ## Notes
 
