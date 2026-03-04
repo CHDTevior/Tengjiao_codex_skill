@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 
 CN_EXEC_GUIDE_PATH = ".codex-research/execution_guide.zh-CN.md"
+WORKFLOW_CODEX_PATH = ".codex-research/workflow/CODEX.md"
 
 CORE_REQUIRED_PATHS = [
     ".codex-research/research_spec.md",
@@ -35,7 +36,7 @@ CORE_REQUIRED_PATHS = [
     ".codex-research/checks/smoke_test.sh",
     ".codex-research/prompts/initializer.md",
     ".codex-research/prompts/worker.md",
-    ".codex-research/workflow/CODEX.md",
+    WORKFLOW_CODEX_PATH,
     CN_EXEC_GUIDE_PATH,
     ".codex-research/MECHANISM.md",
 ]
@@ -368,6 +369,8 @@ Hard rules:
 7. Every path must stay under .codex-research/.
 8. files must include every path from required_files exactly once.
 9. files must be ordered exactly the same as required_files.
+10. If `.codex-research/workflow/CODEX.md` is generated, include a clear GitHub maintenance channel section
+    that covers Issues, Pull Requests, Discussions, and Projects usage.
 
 Mandatory core paths:
 {required_paths_block}
@@ -377,6 +380,22 @@ SOURCE_PLAN_START
 {plan_text}
 SOURCE_PLAN_END
 """
+
+
+def _ensure_workflow_github_channel(content: str) -> str:
+    if re.search(r"(?im)^##\s*GitHub\s+维护渠道\b", content):
+        return _ensure_text_with_newline(content)
+
+    base = content.rstrip("\n")
+    addition = """
+## GitHub 维护渠道
+
+- `Issues`：记录缺陷、需求和待办事项，并按标签管理优先级。
+- `Pull Requests`：所有代码变更通过 PR 合并，并关联对应 Issue。
+- `Discussions`：沉淀设计讨论、方案比较和决策背景，避免上下文丢失。
+- `Projects`：用看板追踪任务状态（To do / In progress / Done），对齐迭代节奏。
+"""
+    return _ensure_text_with_newline(base + "\n\n" + addition.strip("\n"))
 
 
 def _normalize_feature_list(raw: Any) -> List[Dict[str, Any]]:
@@ -723,6 +742,10 @@ def _materialize_generated_bundle(
         plan_path=plan_path,
         target_root=target_root,
     )
+    if WORKFLOW_CODEX_PATH in file_map:
+        file_map[WORKFLOW_CODEX_PATH] = _ensure_workflow_github_channel(
+            file_map[WORKFLOW_CODEX_PATH]
+        )
 
     missing_required = [path for path in required_paths if path not in file_map]
     if missing_required:

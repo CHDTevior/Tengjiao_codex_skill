@@ -26,6 +26,7 @@ description: Read an uploaded deep-learning research plan file and prepare all f
 - Skill output must include a Chinese execution guide: `.codex-research/execution_guide.zh-CN.md`.
 - Do not generate `.codex-research/run_one_task.sh` or `.codex-research/run_plan.sh`; execution guidance should stay in `.codex-research/execution_guide.zh-CN.md`.
 - The Chinese execution guide should instruct Codex to read representative task/progress docs first (for example `.codex-research/task_plan.json`, `.codex-research/session_progress.md`, `.codex-research/decision_log.md`) and use `.codex-research/workflow/CODEX.md` for process-level guidance.
+- When `.codex-research/workflow/CODEX.md` is generated, it must include a dedicated GitHub maintenance channel section (Issues/PRs/Discussions/Projects) for project management.
 - Use absolute paths when reporting generated artifacts.
 - Environment execution examples must use non-login conda shells when wrapping commands (prefer `conda run -n <env> bash -c ...`, avoid `bash -lc` to prevent env reset).
 - Generated harness should be resilient in fresh git repos (no `HEAD` yet): avoid hard failure when `git rev-parse HEAD` is unavailable.
@@ -90,6 +91,7 @@ scripts/prepare_from_plan.sh \
 - Confirm `.codex-research/checks/validate_env.sh` exists and passes basic checks in target env.
 - Confirm `scripts/setup_env.sh` exists and is executable; if delegating to `.codex-research/scripts/set_env.sh`, ensure both paths are present.
 - Confirm `.codex-research/execution_guide.zh-CN.md` explicitly tells Codex to read task/progress docs and `.codex-research/workflow/CODEX.md`.
+- Confirm `.codex-research/workflow/CODEX.md` includes the GitHub maintenance channel section.
 
 ## Notes
 
