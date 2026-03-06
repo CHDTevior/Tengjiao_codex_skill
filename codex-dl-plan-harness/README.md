@@ -1,5 +1,7 @@
 # codex-dl-plan-harness
 
+[直接简单的使用图文，可以跳转到这个云文档学习如何快速上手使用](https://my.feishu.cn/wiki/KriYwDYYXi0t6akCxyNcAWAynMd?from=from_copylink)
+
 把研究计划转换成可落盘、可校验、可执行的 `.codex-research/` 脚手架。
 
 当前版本重点防止五类常见缺陷：
