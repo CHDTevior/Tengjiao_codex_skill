@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_SCRIPT="$SCRIPT_DIR/codex_research_harness.py"
 NORMALIZE_SCRIPT="$SCRIPT_DIR/normalize_plan_with_codex.sh"
+VALIDATOR_SCRIPT="$SCRIPT_DIR/validate_generated_harness.py"
 
 MODE="all"
 PLAN=""
@@ -145,6 +146,11 @@ if [[ ! -f "$FRAMEWORK_SCRIPT" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$VALIDATOR_SCRIPT" ]]; then
+  echo "[error] local validator script not found: $VALIDATOR_SCRIPT" >&2
+  exit 1
+fi
+
 PLAN="$(cd "$(dirname "$PLAN")" && pwd)/$(basename "$PLAN")"
 mkdir -p "$TARGET"
 TARGET="$(cd "$TARGET" && pwd)"
@@ -161,6 +167,10 @@ esac
 ACTIVE_PLAN="$PLAN"
 NORMALIZED_PLAN="$TARGET/.codex-research/plan/normalized_plan.md"
 ALIGNMENT_REPORT="$TARGET/.codex-research/plan/alignment_report.md"
+PREEXISTING_TASK_PLAN=0
+if [[ -f "$TARGET/.codex-research/task_plan.json" ]]; then
+  PREEXISTING_TASK_PLAN=1
+fi
 
 if [[ "$CODEX_PLAN_STAGE" != "off" ]]; then
   if [[ ! -x "$NORMALIZE_SCRIPT" ]]; then
@@ -194,6 +204,14 @@ if [[ "$CODEX_PLAN_STAGE" != "off" ]]; then
 fi
 
 invoke_framework "$ACTIVE_PLAN" "$TARGET"
+
+if [[ "$MODE" == "all" || "$MODE" == "bootstrap" ]]; then
+  validator_args=(--target "$TARGET")
+  if [[ "$PREEXISTING_TASK_PLAN" -eq 1 && "$FORCE" -eq 0 ]]; then
+    validator_args+=(--allow-progress)
+  fi
+  python3 "$VALIDATOR_SCRIPT" "${validator_args[@]}"
+fi
 
 echo "[ok] mode=$MODE source_plan=$PLAN active_plan=$ACTIVE_PLAN target=$TARGET codex_plan_stage=$CODEX_PLAN_STAGE"
 

@@ -1,97 +1,110 @@
 # codex-dl-plan-harness
 
-面向 Codex 的深度学习研发计划脚手架生成器。
+把研究计划转换成可落盘、可校验、可执行的 `.codex-research/` 脚手架。
 
-它的定位是：把一份研究计划（plan）转换成完整的 `.codex-research/` 运行机制文件，并且支持后续按任务逐步执行。
+当前版本重点防止五类常见缺陷：
+- 任务 / 功能漂移
+- 缺失依赖
+- 关键技术合同歧义
+- 评估定义不完整
+- Slurm 规则不可执行
 
-关键变化：
-- 现在不再用关键词/任务行的规则提取来决定文件内容。
-- 现在由 Codex 在一次调用中返回完整文件包（含元数据+按顺序文件内容），然后本地脚本做结构校验与落盘。
-- 生成流程不再自动注入 `--dangerously-bypass-approvals-and-sandbox`。
-- 若生成 `.codex-research/workflow/CODEX.md`，脚本会自动确保其中包含 `GitHub 维护渠道`（Issues / Pull Requests / Discussions / Projects）段落，便于项目管理。
+## 核心变化
 
-## 1. 需要什么输入
+- `task_plan.json` / `feature_list.json` 的结构约束更严格，强制双向映射一致。
+- prompt 不再只做“标准化计划”，而是要求补齐执行合同。
+- `workflow/CODEX.md` 与 `execution_guide.zh-CN.md` 的关键流程约束改为本地稳定模板，减少模型漂移。
+- 生成的 `workflow/CODEX.md` 会固定包含 GitHub maintenance channel 约束，覆盖 Issues / Pull Requests / Discussions / Projects。
+- 新增本地 validator：`scripts/validate_generated_harness.py`。
+- 默认生成流程会自动做本地校验；验证失败直接阻断落盘结果进入“看起来生成成功”的假状态。
 
-最少输入：
+## 生成流程
 
-1. `--plan`：你的计划文件路径（Markdown 或文本）
-2. `--target`：目标项目根目录
-
-常用可选参数：
-
-- `--codex-plan-stage required|auto|off`
-  - `required`：必须先完成计划标准化（默认）
-  - `auto`：尝试标准化，失败回退原计划
-  - `off`：跳过标准化
-- `--codex-model`：指定 Codex 模型（会传给对齐和生成两个阶段）
-- `--mode all|extract|bootstrap|gen-doc`
-- `--force`：覆盖已有文件
-
-## 2. 会经过什么处理
-
-入口：`scripts/prepare_from_plan.sh`
+入口脚本：`scripts/prepare_from_plan.sh`
 
 处理链路：
+1. 校验 `--plan` / `--target`
+2. 运行 `scripts/normalize_plan_with_codex.sh`
+3. 运行 `scripts/codex_research_harness.py`
+4. 本地校验：task / feature / milestone / CODEX.md / 执行指南合同
+5. 写入目标目录
 
-1. 参数和路径校验  
-检查 `--plan`、`--target`、脚本可用性。
+## 输出文件说明
 
-2. 计划标准化（可选）  
-调用 `scripts/normalize_plan_with_codex.sh`，让 Codex 把原始计划整理成结构化 `normalized_plan.md`，并做 section/格式校验。
+默认 `--mode all` 会在目标目录生成 `.codex-research/`，其中常见核心文件作用如下：
 
-3. Codex 生成文件包（核心）  
-调用 `scripts/codex_research_harness.py`。在 `bootstrap/all` 模式下，该脚本使用一次 `codex exec` + JSON schema，让 Codex 直接返回：
-- `required_files`
-- `feature_list`
-- `task_plan`
-- `files`（按 `required_files` 顺序的完整文件包）
+- `research_spec.md`：把原始研究计划整理成项目内可读的研究规格说明。
+- `feature_list.json`：能力映射表，描述有哪些 feature，以及每个 feature 对应哪些任务。
+- `task_plan.json`：执行真相源，定义任务顺序、依赖、验收标准、关键路径与 phase 划分。
+- `required_files.json`：最终应存在的 scaffold 文件清单，是落盘后的正式 manifest。
+- `required_files.generated.json`：生成阶段导出的 manifest 快照，便于对比和调试。
+- `session_progress.md`：记录最近一次或最近几次执行进展、证据、阻塞点和下一步。
+- `decision_log.md`：记录固定设计决策、绕过说明和 evaluator / contract gap。
+- `run_registry.jsonl`：按行记录每次关键运行的命令、seed、commit、job id、artifact 路径。
+- `MECHANISM.md`：说明当前项目内 harness 机制和生成来源。
+- `execution_guide.zh-CN.md`：给后续 Codex 会话的中文执行说明，强调先看哪些文件、怎么选任务、何时更新 `passes`。
+- `workflow/CODEX.md`：流程级操作合同，写死 single source of truth、依赖纪律、Slurm / GPU 规则、评估规则和 completion gate。
+- `init.sh`：项目初始化入口脚本，放最基础的 scaffold 初始化动作。
+- `checks/smoke_test.sh`：最小 smoke test，用于快速验证 scaffold 基本可运行。
+- `prompts/initializer.md`：给初始化型 Codex 会话使用的提示词模板。
+- `prompts/worker.md`：给执行单任务型 Codex 会话使用的提示词模板。
 
-本地脚本会进行校验：
-- 必需核心文件必须齐全
-- 所有路径必须位于 `.codex-research/`
-- `feature_list/task_plan` 结构合法且默认 `passes=false`
-- `files` 与 `required_files` 路径集合与顺序必须一致
-- 不改写生成脚本去强行注入执行 bypass 参数
-- 若存在 `.codex-research/workflow/CODEX.md`，会自动补齐 GitHub 维护渠道章节（若已存在则不重复添加）
+此外，Codex 还可以根据计划内容生成额外文件，例如：
+- 数据集合同或数据检查脚本
+- Slurm / GPU 运行脚本或配置
+- metric / evaluator 说明与检查文件
+- 训练、推理、复现实验相关的辅助配置文件
 
-4. 写入目标目录  
-将生成内容落盘到 `<target>/.codex-research/`，并设置 shell 文件可执行位。
+## 强制字段
 
-5. 给出执行下一步（中文指南）  
-不再生成 `run_one_task.sh` / `run_plan.sh`。生成结束后，统一通过
-`.codex-research/execution_guide.zh-CN.md` 指导后续使用方式，包括：
-- 先阅读代表当前进度的文档：`task_plan.json`、`session_progress.md`、`decision_log.md`
-- 流程性问题查看：`.codex-research/workflow/CODEX.md`
-- 在 Codex 中按 one-session-one-task 手动推进任务并回写文档
+### `task_plan.json`
 
-## 3. 输出是什么
+每个 task 必须有：
+- `id`
+- `title`
+- `description`
+- `milestone`
+- `feature_refs`
+- `depends_on`
+- `blocking_decisions`
+- `steps`
+- `artifacts_out`
+- `acceptance`
+- `passes`
+- 如适用：`critical_path`
 
-默认 `--mode all` 会输出：
+顶层推荐生成：
+- `decisions`
+- `milestones`
+- `environment`
+- `dataset`
 
-核心文件：
-- `.codex-research/research_spec.md`
-- `.codex-research/feature_list.json`
-- `.codex-research/task_plan.json`
-- `.codex-research/required_files.json`
-- `.codex-research/required_files.generated.json`
-- `.codex-research/session_progress.md`
-- `.codex-research/decision_log.md`
-- `.codex-research/run_registry.jsonl`
-- `.codex-research/MECHANISM.md`
-- `.codex-research/execution_guide.zh-CN.md`
+### `feature_list.json`
 
-执行与流程文件：
-- `.codex-research/init.sh`
-- `.codex-research/checks/smoke_test.sh`
-- `.codex-research/prompts/initializer.md`
-- `.codex-research/prompts/worker.md`
-- `.codex-research/workflow/CODEX.md`
+每个 feature 必须有：
+- `id`
+- `category`
+- `task_refs`
+- `description`
+- `steps`
+- `passes`
 
-以及 Codex 判断需要的附加文件（例如 Slurm、metric、tracking、dataset、inference 相关配置），统一放在 `.codex-research/` 下并写入 `required_files.json`。
+## 本地校验规则
 
-## 4. 常用命令
+默认 validator 会检查：
+- `depends_on` 是否只引用存在的 task id
+- `feature_refs` / `task_refs` 是否双向一致
+- milestone id 是否合法且连续（`M0..Mn`）
+- 每个任务是否至少有一个 `acceptance`
+- 初始 scaffold 的 `passes` 是否全为 `false`
+- `critical_path=false` 的任务是否被正确放在 phase-2 / 非阻塞位置
+- `workflow/CODEX.md` 是否包含固定章节
+- `workflow/CODEX.md` 是否明确写出 evaluator 缺失时只能记录 gap，不能虚构指标
+- `execution_guide.zh-CN.md` 是否包含“先看哪些文件”段落
 
-### 4.1 生成完整脚手架
+## 常用命令
+
+### 生成完整脚手架
 
 ```bash
 bash scripts/prepare_from_plan.sh \
@@ -99,38 +112,110 @@ bash scripts/prepare_from_plan.sh \
   --target <project_root>
 ```
 
-### 4.2 指定模型生成
+### 只抽取 manifest
 
 ```bash
 bash scripts/prepare_from_plan.sh \
+  --mode extract \
   --plan <uploaded_plan_file> \
-  --target <project_root> \
-  --codex-model <model_name>
+  --target <project_root>
 ```
 
-### 4.3 查看中文执行指南
+### 独立运行 validator
 
 ```bash
-cat <project_root>/.codex-research/execution_guide.zh-CN.md
+python3 scripts/validate_generated_harness.py \
+  --target <project_root>
 ```
 
-### 4.4 给 Codex 的推荐指令（示例）
+如果是已经推进过若干任务的项目，用：
 
-```text
-请先阅读 .codex-research/task_plan.json、.codex-research/session_progress.md、
-.codex-research/decision_log.md，并参考 .codex-research/workflow/CODEX.md 的流程，
-选择一个 passes=false 的任务推进；完成后回写 progress/decision，并仅在有验证证据时更新 passes。
+```bash
+python3 scripts/validate_generated_harness.py \
+  --target <project_root> \
+  --allow-progress
 ```
 
-## 5. 设计约束
+### 自动执行计划辅助脚本
 
-- 一次会话只做一个任务。
-- 没有测试/命令证据，不要改 `passes=true`。
-- 如果阻塞，保持 `passes=false` 并记录阻塞原因。
-- 高复杂度字段（metric、环境、slurm、验证流程）由 Codex 基于全计划上下文生成，不退回关键词规则。
+仓库内提供：
+- `scripts/run_codex_exec_loop.sh`
 
-## 6. 依赖
+用途：
+- 针对已经由本 skill 生成 `.codex-research/` 的项目，批量调用 `codex exec`
+- 每次 run 只推进一个满足依赖的 task
+- 遇到失败、环境阻塞、外部 Slurm job 未完成时立即停止
+- 把每轮输出写入 `.codex-research/logs/`
 
-- `bash`
-- `python3`
-- `codex` CLI
+如果你直接在目标项目根目录里放置这个脚本，可按下面方式运行：
+
+```bash
+CODEX_PERMISSION_FLAGS="--dangerously-bypass-approvals-and-sandbox" \
+./scripts/run_codex_exec_loop.sh 1
+```
+
+如果脚本仍放在 skill 仓库里，而目标项目在别处，可这样运行：
+
+```bash
+REPO_ROOT=/path/to/generated/project \
+CODEX_PERMISSION_FLAGS="--dangerously-bypass-approvals-and-sandbox" \
+/path/to/Tengjiao_codex_skill/codex-dl-plan-harness/scripts/run_codex_exec_loop.sh 1
+```
+
+传额外 `codex exec` 参数：
+
+```bash
+REPO_ROOT=/path/to/generated/project \
+CODEX_PERMISSION_FLAGS="--dangerously-bypass-approvals-and-sandbox" \
+/path/to/Tengjiao_codex_skill/codex-dl-plan-harness/scripts/run_codex_exec_loop.sh 5 -- --model gpt-5-codex
+```
+
+说明：
+- 默认 `CODEX_PERMISSION_FLAGS` 是 `--ask-for-approval never`
+- 只有你显式设置时，才会使用 `--dangerously-bypass-approvals-and-sandbox`
+- 这个 helper 不会改变 skill 生成阶段“不自动注入 bypass flags 到生成文件”的规则
+
+## 如何确认增强已生效
+
+生成完成后，至少检查这几项：
+- `task_plan.json` 的每个 task 都有 `milestone`、`feature_refs`、`depends_on`、`blocking_decisions`、`artifacts_out`、`acceptance`
+- `feature_list.json` 的每个 feature 都有 `task_refs`
+- `task_plan.json` 与 `feature_list.json` 双向引用一致
+- `workflow/CODEX.md` 含固定章节，并明确写出 evaluator 缺失时只能记录 gap，不能虚构指标
+- `execution_guide.zh-CN.md` 含 “先看哪些文件” 段落
+
+## 最小示例输入计划
+
+```md
+# Motion control plan
+
+Goal: build a v1 text+trajectory to motion pipeline, then add a phase-2 tokenizer enhancement.
+
+Constraints:
+- v1 must be runnable on Slurm GPU nodes
+- dataset is HumanML3D
+- metrics must be explicit; if an evaluator is missing, record the gap
+- inference must use planner trajectory
+- evaluation must separate oracle vs end-to-end
+
+Needed work:
+- v1 mainline: dataset contract, planner, motion conditioning, end-to-end inference
+- phase-2: Traj-VQ comparison branch
+```
+
+## 预期输出摘要
+
+- `task_plan.json` 会包含 `decisions`、`milestones`、`environment`、`dataset`
+- v1 主线任务与 phase-2 增强任务会区分开，不会默认全部位于关键路径
+- phase-2 任务应设置 `critical_path=false`
+- `workflow/CODEX.md` 会固定写入执行真相源、依赖纪律、Slurm / GPU 规则、评估规则、完成门槛
+- `execution_guide.zh-CN.md` 会固定引导 Codex 先读：
+  - `task_plan.json`
+  - `session_progress.md`
+  - `decision_log.md`
+  - `workflow/CODEX.md`
+
+## 参考
+
+- `references/file_manifest_policy.md`
+- `references/scaffold_contract.md`

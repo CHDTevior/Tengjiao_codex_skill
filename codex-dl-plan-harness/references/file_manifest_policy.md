@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Translate an uploaded research plan into a Codex-generated file manifest and scaffold bundle for the Codex DL long-running harness.
+Translate an uploaded research plan into a Codex-generated file manifest and scaffold bundle for the Codex DL long-running harness, while preventing task drift, missing dependencies, ambiguous contracts, incomplete evaluation definitions, and non-executable Slurm guidance.
 
 ## Core Files (always generated)
 
@@ -21,18 +21,29 @@ Translate an uploaded research plan into a Codex-generated file manifest and sca
 - `.codex-research/execution_guide.zh-CN.md`
 - `.codex-research/MECHANISM.md`
 
+## Structured Metadata Contract
+
+- `task_plan.json` is the execution truth source.
+- `feature_list.json` is the capability map.
+- Task and feature references must be bidirectionally consistent.
+- `task_plan.json` should include top-level `decisions`, `milestones`, `environment`, and `dataset` whenever the source plan allows it.
+- Milestones should use continuous ids like `M0..Mn` and mark `phase: v1` or `phase: phase-2` when the distinction matters.
+- Phase-2 tasks must be marked `critical_path=false` so they do not block v1 DoD.
+
+See `references/scaffold_contract.md` for the full validator-enforced rules.
+
 ## Optional Files
 
-- Additional files (for metrics, environment setup, Slurm, tracking, data pipelines, inference) are decided by Codex from full plan context.
-- Optional files must still be generated under `.codex-research/` and listed in `required_files.json`.
+- Additional files for metrics, environment setup, Slurm, tracking, data pipelines, datasets, and inference may be added from full-plan context.
+- Optional files must still stay under `.codex-research/` and appear in `required_files.json`.
 
 ## Operating Constraints
 
 - Preserve existing files unless `--force` is used.
 - Keep generated file paths stable for repeatable sessions.
-- Keep `feature_list.json` as the session completion gate.
-- Keep `task_plan.json` as the task-level execution gate for automation scripts.
-- Do not reduce generation to keyword-only rules for advanced planning fields (metrics, runtime environment, scheduler workflow, validation protocol).
-- Generate scaffolding with one Codex bundle call (bootstrap/all mode); the response must return metadata and all required files in order.
-- Do not generate `.codex-research/run_one_task.sh` or `.codex-research/run_plan.sh`; keep usage guidance in `.codex-research/execution_guide.zh-CN.md`.
-- Skill-internal generation should preserve intended workflow logic and must not auto-inject execution-bypass flags into generated `.codex-research/*` files.
+- Do not reduce generation to keyword-only rules for advanced planning fields.
+- Generate scaffolding with one Codex bundle call in `bootstrap` / `all` mode.
+- Do not generate `.codex-research/run_one_task.sh` or `.codex-research/run_plan.sh`.
+- Do not auto-inject execution-bypass flags into generated `.codex-research/*` files.
+- The generated `workflow/CODEX.md` must contain the fixed workflow sections and the evaluator-gap rule.
+- The generated Chinese execution guide must contain a dedicated read-first section for `task_plan.json`, `session_progress.md`, `decision_log.md`, and `workflow/CODEX.md`.

@@ -22,8 +22,37 @@ from typing import Any, Dict, List, Set, Tuple
 
 
 CN_EXEC_GUIDE_PATH = ".codex-research/execution_guide.zh-CN.md"
-WORKFLOW_CODEX_PATH = ".codex-research/workflow/CODEX.md"
-
+CODEX_WORKFLOW_PATH = ".codex-research/workflow/CODEX.md"
+FORBIDDEN_GENERATED_PATHS = {
+    ".codex-research/run_one_task.sh",
+    ".codex-research/run_plan.sh",
+}
+BYPASS_FLAG = "--dangerously-bypass-approvals-and-sandbox"
+REQUIRED_READ_FIRST_FILES = [
+    ".codex-research/task_plan.json",
+    ".codex-research/session_progress.md",
+    ".codex-research/decision_log.md",
+    CODEX_WORKFLOW_PATH,
+]
+REQUIRED_CODEX_SECTIONS = [
+    "## Single Source of Truth",
+    "## Core Loop",
+    "## Dependency Discipline",
+    "## Fixed v1 Design Contracts",
+    "## Dataset Contract",
+    "## Slurm / GPU Policy",
+    "## Evaluation Policy",
+    "## Task Completion Evidence Contract",
+    "## GitHub Maintenance Channels",
+    "## Completion Gate",
+]
+REQUIRED_CODEX_PHRASES = [
+    "task_plan.json is the execution source of truth, feature_list.json is the capability map",
+    "只能选择依赖已满足的 passes=false 任务",
+    "没有证据不能改 passes=true",
+    "任何 bypass 都必须写入 decision log",
+    "If an evaluator is missing, record the gap and do not invent metrics.",
+]
 CORE_REQUIRED_PATHS = [
     ".codex-research/research_spec.md",
     ".codex-research/feature_list.json",
@@ -36,7 +65,7 @@ CORE_REQUIRED_PATHS = [
     ".codex-research/checks/smoke_test.sh",
     ".codex-research/prompts/initializer.md",
     ".codex-research/prompts/worker.md",
-    WORKFLOW_CODEX_PATH,
+    CODEX_WORKFLOW_PATH,
     CN_EXEC_GUIDE_PATH,
     ".codex-research/MECHANISM.md",
 ]
@@ -68,7 +97,97 @@ def normalize_rel_path(path: str) -> str:
     parts = Path(normalized).parts
     if ".." in parts:
         raise SystemExit(f"generated path must not contain '..': {path}")
+    if normalized in FORBIDDEN_GENERATED_PATHS:
+        raise SystemExit(f"generated path is forbidden by harness policy: {path}")
     return normalized
+
+
+def _string_array_schema(*, min_items: int = 0) -> Dict[str, Any]:
+    return {
+        "type": "array",
+        "minItems": min_items,
+        "items": {"type": "string", "minLength": 1},
+    }
+
+
+def _decision_schema() -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "required": ["id", "title", "status", "decision"],
+        "properties": {
+            "id": {"type": "string", "minLength": 2},
+            "title": {"type": "string", "minLength": 3},
+            "status": {"type": "string", "minLength": 2},
+            "decision": {"type": "string", "minLength": 5},
+            "rationale": _string_array_schema(min_items=0),
+            "impacts": _string_array_schema(min_items=0),
+        },
+    }
+
+
+def _milestone_schema() -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "required": ["id", "title"],
+        "properties": {
+            "id": {"type": "string", "pattern": "^M[0-9]+$"},
+            "title": {"type": "string", "minLength": 3},
+            "phase": {"type": "string", "enum": ["v1", "phase-2"]},
+            "definition_of_done": _string_array_schema(min_items=0),
+        },
+    }
+
+
+def _feature_schema() -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "required": ["id", "category", "task_refs", "description", "steps", "passes"],
+        "properties": {
+            "id": {"type": "string", "minLength": 2},
+            "category": {"type": "string", "minLength": 2},
+            "task_refs": _string_array_schema(min_items=1),
+            "description": {"type": "string", "minLength": 5},
+            "steps": _string_array_schema(min_items=1),
+            "passes": {"type": "boolean"},
+        },
+    }
+
+
+def _task_schema() -> Dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "required": [
+            "id",
+            "title",
+            "description",
+            "milestone",
+            "feature_refs",
+            "depends_on",
+            "blocking_decisions",
+            "steps",
+            "artifacts_out",
+            "acceptance",
+            "passes",
+        ],
+        "properties": {
+            "id": {"type": "string", "minLength": 2},
+            "title": {"type": "string", "minLength": 3},
+            "description": {"type": "string", "minLength": 5},
+            "milestone": {"type": "string", "pattern": "^M[0-9]+$"},
+            "feature_refs": _string_array_schema(min_items=1),
+            "depends_on": _string_array_schema(min_items=0),
+            "blocking_decisions": _string_array_schema(min_items=0),
+            "steps": _string_array_schema(min_items=1),
+            "artifacts_out": _string_array_schema(min_items=1),
+            "acceptance": _string_array_schema(min_items=1),
+            "passes": {"type": "boolean"},
+            "critical_path": {"type": "boolean"},
+        },
+    }
 
 
 def _analysis_schema() -> Dict[str, Any]:
@@ -94,53 +213,29 @@ def _analysis_schema() -> Dict[str, Any]:
             "feature_list": {
                 "type": "array",
                 "minItems": 1,
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["id", "category", "description", "steps", "passes"],
-                    "properties": {
-                        "id": {"type": "string", "minLength": 2},
-                        "category": {"type": "string", "minLength": 2},
-                        "description": {"type": "string", "minLength": 5},
-                        "steps": {
-                            "type": "array",
-                            "minItems": 1,
-                            "items": {"type": "string", "minLength": 2},
-                        },
-                        "passes": {"type": "boolean"},
-                    },
-                },
+                "items": _feature_schema(),
             },
             "task_plan": {
                 "type": "object",
-                "additionalProperties": False,
+                "additionalProperties": True,
                 "required": ["project", "rules", "tasks"],
                 "properties": {
                     "project": {"type": "string", "minLength": 1},
-                    "rules": {
+                    "rules": _string_array_schema(min_items=1),
+                    "decisions": {
                         "type": "array",
-                        "minItems": 1,
-                        "items": {"type": "string", "minLength": 3},
+                        "items": _decision_schema(),
                     },
+                    "milestones": {
+                        "type": "array",
+                        "items": _milestone_schema(),
+                    },
+                    "environment": {"type": "object"},
+                    "dataset": {"type": "object"},
                     "tasks": {
                         "type": "array",
                         "minItems": 1,
-                        "items": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "required": ["id", "title", "description", "steps", "passes"],
-                            "properties": {
-                                "id": {"type": "string", "minLength": 2},
-                                "title": {"type": "string", "minLength": 3},
-                                "description": {"type": "string", "minLength": 5},
-                                "steps": {
-                                    "type": "array",
-                                    "minItems": 1,
-                                    "items": {"type": "string", "minLength": 2},
-                                },
-                                "passes": {"type": "boolean"},
-                            },
-                        },
+                        "items": _task_schema(),
                     },
                 },
             },
@@ -267,6 +362,55 @@ def _run_codex_json(
         ) from exc
 
 
+def _planning_contract_block(required_paths_block: str) -> str:
+    return f"""Hard generation contract:
+1. Do not merely standardize the plan. Fill in the execution contract needed to run the project.
+2. Convert actionable ambiguity into fixed top-level decisions[] entries. Only leave irreducible unknowns as explicit gaps.
+3. Distinguish v1 mainline from phase-2 enhancements. Do not default every task to the critical path.
+4. task_plan.tasks[] must include:
+   - id
+   - title
+   - description
+   - milestone
+   - feature_refs
+   - depends_on
+   - blocking_decisions
+   - steps
+   - artifacts_out
+   - acceptance
+   - passes
+   - critical_path when the task is explicitly v1-blocking or phase-2/non-blocking
+5. feature_list[] must include:
+   - id
+   - category
+   - task_refs
+   - description
+   - steps
+   - passes
+6. Enforce bidirectional mapping consistency:
+   - every task feature_refs entry must exist in feature_list
+   - every feature task_refs entry must exist in task_plan.tasks
+   - mappings must be reciprocal
+7. Use milestone ids M0..Mn and keep them continuous. Include top-level milestones[] when possible and add phase: v1 or phase-2 when that distinction matters.
+8. Every task must have at least one acceptance criterion and every generated passes value must start as false.
+9. If critical_path=false, the task must be a non-blocking phase-2 enhancement and must not block v1 definition of done.
+10. Write fixed contracts for:
+    - motion conditioning / train-eval-inference behavior
+    - metric definitions and artifact outputs
+    - Slurm / GPU execution policy
+    - dataset contract
+11. If an evaluator is missing, record an explicit gap and do not invent metrics.
+12. Output files must be disk-ready, validator-ready, and executable where appropriate. Do not output conceptual outlines.
+13. Do not generate `.codex-research/run_one_task.sh` or `.codex-research/run_plan.sh`.
+14. Do not inject bypass flags such as `{BYPASS_FLAG}` into generated files.
+15. required_files must include all mandatory core paths listed below.
+16. Every generated path must stay under `.codex-research/`.
+
+Mandatory core paths:
+{required_paths_block}
+"""
+
+
 def _build_analysis_prompt(plan_path: Path, plan_text: str) -> str:
     required_paths_block = "\n".join(f"- {path}" for path in CORE_REQUIRED_PATHS)
     return f"""You are generating planning metadata for a Codex long-running deep-learning harness.
@@ -276,19 +420,19 @@ Produce project-aware scaffolding metadata from the provided plan.
 
 Critical requirement:
 Do NOT use simplistic keyword-only extraction logic. Infer concrete workflow details from full plan context,
-including metrics, runtime environment, scheduler usage (e.g., Slurm), validation strategy, and reproducibility.
+including metrics, runtime environment, scheduler usage (for example Slurm), dataset layout,
+motion conditioning, training/evaluation/inference behavior, validation strategy, and reproducibility.
 
 Return JSON only.
 
-Hard rules:
-1. required_files must include all mandatory core paths listed below.
-2. You may add extra .codex-research paths when needed by the plan.
-3. feature_list and task_plan.tasks must start with passes=false.
-4. Keep paths strictly under .codex-research/.
-5. Include realistic and actionable descriptions/steps.
+{_planning_contract_block(required_paths_block)}
 
-Mandatory core paths:
-{required_paths_block}
+Required task_plan top-level shape guidance:
+- Prefer including decisions, milestones, environment, and dataset.
+- milestones entries should normally include id, title, and phase.
+- decisions should lock down the contracts that would otherwise drift during implementation.
+- environment should state env name, command wrapper, and GPU execution policy when known.
+- dataset should state canonical roots, required items, split policy, and failure policy when known.
 
 Source plan path: {plan_path.resolve()}
 SOURCE_PLAN_START
@@ -323,11 +467,12 @@ Target path (must match exactly): {target_path}
 Target reason: {reason}
 
 Global constraints:
-1. Do NOT use simplistic keyword-only logic.
-2. Use full plan context to reflect realistic metric/environment/slurm/eval workflow where relevant.
-3. Keep content production-ready and consistent with feature/task plans below.
-4. Do not include markdown code fences around file content.
-5. Keep path exactly as target path.
+1. Use the full project context, not keyword-only heuristics.
+2. Keep content production-ready, concrete, and internally consistent with the feature/task plan below.
+3. Do not include markdown code fences around file content.
+4. Do not inject bypass flags such as `{BYPASS_FLAG}`.
+5. Do not emit conceptual TODO-only outlines; write files that can be saved and executed.
+6. Preserve the fixed contracts already encoded in task_plan and feature_list.
 
 Harness summary:
 {summary}
@@ -359,21 +504,15 @@ def _build_file_bundle_prompt(
 
 Return JSON only.
 
-Hard rules:
-1. Do NOT use simplistic keyword-only logic.
-2. Use full plan context to reflect realistic metric/environment/slurm/eval workflow where relevant.
-3. Keep content production-ready and self-consistent.
-4. Do not include markdown code fences around file content.
-5. required_files must include all mandatory core paths listed below.
-6. feature_list and task_plan.tasks must start with passes=false.
-7. Every path must stay under .codex-research/.
-8. files must include every path from required_files exactly once.
-9. files must be ordered exactly the same as required_files.
-10. If `.codex-research/workflow/CODEX.md` is generated, include a clear GitHub maintenance channel section
-    that covers Issues, Pull Requests, Discussions, and Projects usage.
+{_planning_contract_block(required_paths_block)}
 
-Mandatory core paths:
-{required_paths_block}
+Bundle-specific rules:
+1. files must include every path from required_files exactly once.
+2. files must be ordered exactly the same as required_files.
+3. Keep file contents self-consistent with the structured metadata.
+4. `.codex-research/workflow/CODEX.md` must be an operational workflow document, not a conceptual overview.
+5. `.codex-research/execution_guide.zh-CN.md` must tell Codex exactly which files to read first.
+6. `task_plan.json` and `feature_list.json` must be ready for local validation with no missing references.
 
 Source plan path: {plan_path.resolve()}
 SOURCE_PLAN_START
@@ -382,23 +521,48 @@ SOURCE_PLAN_END
 """
 
 
-def _ensure_workflow_github_channel(content: str) -> str:
-    if re.search(r"(?im)^##\s*GitHub\s+维护渠道\b", content):
-        return _ensure_text_with_newline(content)
-
-    base = content.rstrip("\n")
-    addition = """
-## GitHub 维护渠道
-
-- `Issues`：记录缺陷、需求和待办事项，并按标签管理优先级。
-- `Pull Requests`：所有代码变更通过 PR 合并，并关联对应 Issue。
-- `Discussions`：沉淀设计讨论、方案比较和决策背景，避免上下文丢失。
-- `Projects`：用看板追踪任务状态（To do / In progress / Done），对齐迭代节奏。
-"""
-    return _ensure_text_with_newline(base + "\n\n" + addition.strip("\n"))
+def _milestone_index(milestone_id: str) -> int:
+    match = re.fullmatch(r"M([0-9]+)", milestone_id)
+    if not match:
+        raise SystemExit(f"invalid milestone id: {milestone_id}")
+    return int(match.group(1))
 
 
-def _normalize_feature_list(raw: Any) -> List[Dict[str, Any]]:
+def _normalize_string_list(
+    value: Any,
+    *,
+    field_name: str,
+    min_items: int,
+) -> List[str]:
+    if not isinstance(value, list):
+        raise SystemExit(f"{field_name} must be a list")
+    items = [str(item).strip() for item in value if str(item).strip()]
+    if len(items) < min_items:
+        raise SystemExit(f"{field_name} must contain at least {min_items} item(s)")
+    return items
+
+
+def _normalize_optional_string_list(value: Any, *, field_name: str) -> List[str]:
+    if value is None:
+        return []
+    return _normalize_string_list(value, field_name=field_name, min_items=0)
+
+
+def _normalize_passes(value: Any, *, field_name: str, expect_initial_state: bool) -> bool:
+    if value is None:
+        return False if expect_initial_state else False
+    if not isinstance(value, bool):
+        raise SystemExit(f"{field_name} must be boolean")
+    if expect_initial_state and value:
+        raise SystemExit(f"{field_name} must start as false in generated scaffolds")
+    return value
+
+
+def _preserve_extra_fields(entry: Dict[str, Any], known_keys: Set[str]) -> Dict[str, Any]:
+    return {key: value for key, value in entry.items() if key not in known_keys}
+
+
+def _normalize_feature_list(raw: Any, *, expect_initial_state: bool) -> List[Dict[str, Any]]:
     if not isinstance(raw, list):
         raise SystemExit("feature_list must be a JSON list")
 
@@ -407,27 +571,131 @@ def _normalize_feature_list(raw: Any) -> List[Dict[str, Any]]:
         if not isinstance(entry, dict):
             raise SystemExit(f"feature_list[{idx}] must be an object")
 
+        known_keys = {"id", "category", "task_refs", "description", "steps", "passes"}
         item = {
             "id": str(entry.get("id", f"F-{idx:04d}")).strip() or f"F-{idx:04d}",
             "category": str(entry.get("category", "research")).strip() or "research",
+            "task_refs": _normalize_string_list(
+                entry.get("task_refs", []),
+                field_name=f"feature_list[{idx}].task_refs",
+                min_items=1,
+            ),
             "description": str(entry.get("description", "")).strip(),
-            "steps": entry.get("steps", []),
-            "passes": False,
+            "steps": _normalize_string_list(
+                entry.get("steps", []),
+                field_name=f"feature_list[{idx}].steps",
+                min_items=1,
+            ),
+            "passes": _normalize_passes(
+                entry.get("passes", False),
+                field_name=f"feature_list[{idx}].passes",
+                expect_initial_state=expect_initial_state,
+            ),
         }
         if not item["description"]:
             raise SystemExit(f"feature_list[{idx}].description is empty")
-        if not isinstance(item["steps"], list) or not item["steps"]:
-            raise SystemExit(f"feature_list[{idx}].steps must be a non-empty list")
-
-        item["steps"] = [str(step).strip() for step in item["steps"] if str(step).strip()]
-        if not item["steps"]:
-            raise SystemExit(f"feature_list[{idx}].steps resolved to empty list")
-
+        item.update(_preserve_extra_fields(entry, known_keys))
         items.append(item)
     return items
 
 
-def _normalize_task_plan(raw: Any, plan_path: Path, generated_at: str) -> Dict[str, Any]:
+def _normalize_decisions(raw: Any) -> List[Dict[str, Any]]:
+    if raw in (None, []):
+        return []
+    if not isinstance(raw, list):
+        raise SystemExit("task_plan.decisions must be a list when provided")
+
+    decisions: List[Dict[str, Any]] = []
+    for idx, entry in enumerate(raw, start=1):
+        if not isinstance(entry, dict):
+            raise SystemExit(f"task_plan.decisions[{idx}] must be an object")
+        known_keys = {"id", "title", "status", "decision", "rationale", "impacts"}
+        item = {
+            "id": str(entry.get("id", f"D{idx:03d}")).strip() or f"D{idx:03d}",
+            "title": str(entry.get("title", "")).strip(),
+            "status": str(entry.get("status", "fixed")).strip() or "fixed",
+            "decision": str(entry.get("decision", "")).strip(),
+        }
+        if not item["title"]:
+            raise SystemExit(f"task_plan.decisions[{idx}].title is empty")
+        if not item["decision"]:
+            raise SystemExit(f"task_plan.decisions[{idx}].decision is empty")
+
+        rationale = entry.get("rationale")
+        if rationale is not None:
+            item["rationale"] = _normalize_optional_string_list(
+                rationale,
+                field_name=f"task_plan.decisions[{idx}].rationale",
+            )
+        impacts = entry.get("impacts")
+        if impacts is not None:
+            item["impacts"] = _normalize_optional_string_list(
+                impacts,
+                field_name=f"task_plan.decisions[{idx}].impacts",
+            )
+
+        item.update(_preserve_extra_fields(entry, known_keys))
+        decisions.append(item)
+    return decisions
+
+
+def _normalize_milestones(raw: Any, task_milestone_ids: Set[str]) -> List[Dict[str, Any]]:
+    if raw in (None, []):
+        return [
+            {"id": milestone_id, "title": f"Milestone {milestone_id}"}
+            for milestone_id in sorted(task_milestone_ids, key=_milestone_index)
+        ]
+    if not isinstance(raw, list):
+        raise SystemExit("task_plan.milestones must be a list when provided")
+
+    milestones: List[Dict[str, Any]] = []
+    for idx, entry in enumerate(raw, start=1):
+        if not isinstance(entry, dict):
+            raise SystemExit(f"task_plan.milestones[{idx}] must be an object")
+        known_keys = {"id", "title", "phase", "definition_of_done"}
+        item = {
+            "id": str(entry.get("id", "")).strip(),
+            "title": str(entry.get("title", "")).strip(),
+        }
+        if not item["id"]:
+            raise SystemExit(f"task_plan.milestones[{idx}].id is empty")
+        _milestone_index(item["id"])
+        if not item["title"]:
+            raise SystemExit(f"task_plan.milestones[{idx}].title is empty")
+        phase = entry.get("phase")
+        if phase is not None:
+            phase_text = str(phase).strip()
+            if phase_text not in {"v1", "phase-2"}:
+                raise SystemExit(
+                    f"task_plan.milestones[{idx}].phase must be 'v1' or 'phase-2'"
+                )
+            item["phase"] = phase_text
+        definition_of_done = entry.get("definition_of_done")
+        if definition_of_done is not None:
+            item["definition_of_done"] = _normalize_optional_string_list(
+                definition_of_done,
+                field_name=f"task_plan.milestones[{idx}].definition_of_done",
+            )
+        item.update(_preserve_extra_fields(entry, known_keys))
+        milestones.append(item)
+
+    milestone_ids = {item["id"] for item in milestones}
+    missing = sorted(task_milestone_ids - milestone_ids, key=_milestone_index)
+    if missing:
+        raise SystemExit(
+            "task_plan.milestones is missing milestone ids referenced by tasks: "
+            + ", ".join(missing)
+        )
+    return milestones
+
+
+def _normalize_task_plan(
+    raw: Any,
+    plan_path: Path,
+    generated_at: str,
+    *,
+    expect_initial_state: bool,
+) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         raise SystemExit("task_plan must be a JSON object")
 
@@ -436,28 +704,80 @@ def _normalize_task_plan(raw: Any, plan_path: Path, generated_at: str) -> Dict[s
         raise SystemExit("task_plan.tasks must be a non-empty list")
 
     normalized_tasks: List[Dict[str, Any]] = []
+    task_milestone_ids: Set[str] = set()
     for idx, entry in enumerate(tasks, start=1):
         if not isinstance(entry, dict):
             raise SystemExit(f"task_plan.tasks[{idx}] must be an object")
 
+        known_keys = {
+            "id",
+            "title",
+            "description",
+            "milestone",
+            "feature_refs",
+            "depends_on",
+            "blocking_decisions",
+            "steps",
+            "artifacts_out",
+            "acceptance",
+            "passes",
+            "critical_path",
+        }
         task = {
             "id": str(entry.get("id", f"T-{idx:04d}")).strip() or f"T-{idx:04d}",
             "title": str(entry.get("title", "")).strip(),
             "description": str(entry.get("description", "")).strip(),
-            "steps": entry.get("steps", []),
-            "passes": False,
+            "milestone": str(entry.get("milestone", "")).strip(),
+            "feature_refs": _normalize_string_list(
+                entry.get("feature_refs", []),
+                field_name=f"task_plan.tasks[{idx}].feature_refs",
+                min_items=1,
+            ),
+            "depends_on": _normalize_optional_string_list(
+                entry.get("depends_on", []),
+                field_name=f"task_plan.tasks[{idx}].depends_on",
+            ),
+            "blocking_decisions": _normalize_optional_string_list(
+                entry.get("blocking_decisions", []),
+                field_name=f"task_plan.tasks[{idx}].blocking_decisions",
+            ),
+            "steps": _normalize_string_list(
+                entry.get("steps", []),
+                field_name=f"task_plan.tasks[{idx}].steps",
+                min_items=1,
+            ),
+            "artifacts_out": _normalize_string_list(
+                entry.get("artifacts_out", []),
+                field_name=f"task_plan.tasks[{idx}].artifacts_out",
+                min_items=1,
+            ),
+            "acceptance": _normalize_string_list(
+                entry.get("acceptance", []),
+                field_name=f"task_plan.tasks[{idx}].acceptance",
+                min_items=1,
+            ),
+            "passes": _normalize_passes(
+                entry.get("passes", False),
+                field_name=f"task_plan.tasks[{idx}].passes",
+                expect_initial_state=expect_initial_state,
+            ),
         }
         if not task["title"]:
             raise SystemExit(f"task_plan.tasks[{idx}].title is empty")
         if not task["description"]:
             raise SystemExit(f"task_plan.tasks[{idx}].description is empty")
-        if not isinstance(task["steps"], list) or not task["steps"]:
-            raise SystemExit(f"task_plan.tasks[{idx}].steps must be a non-empty list")
+        if not task["milestone"]:
+            raise SystemExit(f"task_plan.tasks[{idx}].milestone is empty")
+        _milestone_index(task["milestone"])
+        task_milestone_ids.add(task["milestone"])
 
-        task["steps"] = [str(step).strip() for step in task["steps"] if str(step).strip()]
-        if not task["steps"]:
-            raise SystemExit(f"task_plan.tasks[{idx}].steps resolved to empty list")
+        critical_path = entry.get("critical_path")
+        if critical_path is not None:
+            if not isinstance(critical_path, bool):
+                raise SystemExit(f"task_plan.tasks[{idx}].critical_path must be boolean")
+            task["critical_path"] = critical_path
 
+        task.update(_preserve_extra_fields(entry, known_keys))
         normalized_tasks.append(task)
 
     rules = raw.get("rules")
@@ -468,62 +788,423 @@ def _normalize_task_plan(raw: Any, plan_path: Path, generated_at: str) -> Dict[s
             "If blocked, keep passes=false and log blocker details.",
         ]
 
-    return {
+    decisions = _normalize_decisions(raw.get("decisions"))
+    milestones = _normalize_milestones(raw.get("milestones"), task_milestone_ids)
+
+    environment = raw.get("environment", {})
+    if environment is None:
+        environment = {}
+    if not isinstance(environment, dict):
+        raise SystemExit("task_plan.environment must be an object when provided")
+
+    dataset = raw.get("dataset", {})
+    if dataset is None:
+        dataset = {}
+    if not isinstance(dataset, dict):
+        raise SystemExit("task_plan.dataset must be an object when provided")
+
+    task_plan = {
         "project": str(raw.get("project", plan_path.stem)).strip() or plan_path.stem,
         "generated_at": generated_at,
         "plan_path": str(plan_path.resolve()),
         "rules": [str(rule).strip() for rule in rules if str(rule).strip()],
+        "decisions": decisions,
+        "milestones": milestones,
+        "environment": environment,
+        "dataset": dataset,
         "tasks": normalized_tasks,
     }
+
+    known_top_level = {
+        "project",
+        "generated_at",
+        "plan_path",
+        "rules",
+        "decisions",
+        "milestones",
+        "environment",
+        "dataset",
+        "tasks",
+    }
+    task_plan.update(_preserve_extra_fields(raw, known_top_level))
+    return task_plan
+
+
+def _validate_unique_ids(items: List[Dict[str, Any]], *, kind: str) -> None:
+    seen: Set[str] = set()
+    duplicates: Set[str] = set()
+    for item in items:
+        item_id = str(item.get("id", "")).strip()
+        if item_id in seen:
+            duplicates.add(item_id)
+        seen.add(item_id)
+    if duplicates:
+        dup_list = ", ".join(sorted(duplicates))
+        raise SystemExit(f"duplicate {kind} ids detected: {dup_list}")
+
+
+def _validate_milestones(milestones: List[Dict[str, Any]]) -> None:
+    if not milestones:
+        raise SystemExit("task_plan.milestones must not be empty after normalization")
+    _validate_unique_ids(milestones, kind="milestone")
+    ordered = sorted(_milestone_index(item["id"]) for item in milestones)
+    expected = list(range(ordered[0], ordered[-1] + 1))
+    if ordered != expected:
+        raise SystemExit(
+            "milestone ids must be continuous; expected sequence like M0..Mn"
+        )
+
+
+def _task_has_phase2_signal(task: Dict[str, Any]) -> bool:
+    text_parts: List[str] = [
+        str(task.get("title", "")),
+        str(task.get("description", "")),
+    ]
+    for key in ("steps", "acceptance", "artifacts_out"):
+        value = task.get(key, [])
+        if isinstance(value, list):
+            text_parts.extend(str(item) for item in value)
+    blob = " ".join(text_parts).lower()
+    markers = [
+        "phase-2",
+        "phase 2",
+        "non-blocking",
+        "enhancement",
+        "optional",
+        "comparison branch",
+        "ablation",
+    ]
+    return any(marker in blob for marker in markers)
+
+
+def _validate_task_feature_mappings(
+    feature_list: List[Dict[str, Any]],
+    task_plan: Dict[str, Any],
+    *,
+    expect_initial_state: bool,
+) -> None:
+    tasks = task_plan["tasks"]
+    decisions = task_plan.get("decisions", [])
+    milestones = task_plan.get("milestones", [])
+
+    _validate_unique_ids(feature_list, kind="feature")
+    _validate_unique_ids(tasks, kind="task")
+    _validate_milestones(milestones)
+
+    feature_ids = {item["id"] for item in feature_list}
+    task_ids = {item["id"] for item in tasks}
+    decision_ids = {item["id"] for item in decisions}
+    milestone_phase = {
+        item["id"]: str(item.get("phase", "")).strip()
+        for item in milestones
+    }
+
+    task_to_features = {task["id"]: set(task["feature_refs"]) for task in tasks}
+    feature_to_tasks = {feature["id"]: set(feature["task_refs"]) for feature in feature_list}
+
+    for task in tasks:
+        task_id = task["id"]
+        if expect_initial_state and task["passes"] is not False:
+            raise SystemExit(f"task {task_id} must start with passes=false")
+        for dep in task["depends_on"]:
+            if dep not in task_ids:
+                raise SystemExit(f"task {task_id} depends_on unknown task id: {dep}")
+        for feature_id in task["feature_refs"]:
+            if feature_id not in feature_ids:
+                raise SystemExit(f"task {task_id} references unknown feature id: {feature_id}")
+            if task_id not in feature_to_tasks[feature_id]:
+                raise SystemExit(
+                    f"task/feature mapping mismatch: task {task_id} -> {feature_id} not mirrored in feature.task_refs"
+                )
+        if not task["acceptance"]:
+            raise SystemExit(f"task {task_id} must have at least one acceptance item")
+        for decision_id in task["blocking_decisions"]:
+            if decision_id not in decision_ids:
+                raise SystemExit(
+                    f"task {task_id} blocking_decisions references unknown decision id: {decision_id}"
+                )
+        if task["milestone"] not in milestone_phase:
+            raise SystemExit(
+                f"task {task_id} references milestone not defined in task_plan.milestones: {task['milestone']}"
+            )
+        if task.get("critical_path") is False:
+            phase = milestone_phase.get(task["milestone"], "")
+            if phase == "phase-2":
+                pass
+            elif _task_has_phase2_signal(task):
+                pass
+            else:
+                raise SystemExit(
+                    f"task {task_id} has critical_path=false but neither milestone {task['milestone']} nor task text marks it as phase-2/non-blocking"
+                )
+
+    for feature in feature_list:
+        feature_id = feature["id"]
+        if expect_initial_state and feature["passes"] is not False:
+            raise SystemExit(f"feature {feature_id} must start with passes=false")
+        for task_id in feature["task_refs"]:
+            if task_id not in task_ids:
+                raise SystemExit(f"feature {feature_id} references unknown task id: {task_id}")
+            if feature_id not in task_to_features[task_id]:
+                raise SystemExit(
+                    f"task/feature mapping mismatch: feature {feature_id} -> {task_id} not mirrored in task.feature_refs"
+                )
+
+    phase2_task_ids = {
+        task["id"]
+        for task in tasks
+        if milestone_phase.get(task["milestone"]) == "phase-2"
+    }
+    for task_id in phase2_task_ids:
+        task = next(item for item in tasks if item["id"] == task_id)
+        if task.get("critical_path") is not False:
+            raise SystemExit(
+                f"phase-2 task {task_id} must set critical_path=false so it does not block v1 DoD"
+            )
 
 
 def _ensure_text_with_newline(value: str) -> str:
     return value if value.endswith("\n") else value + "\n"
 
 
-def _build_cn_execution_guide(plan_path: Path, target_root: Path) -> str:
+def _format_bullets(items: List[str], *, default: str) -> str:
+    if not items:
+        return f"- {default}"
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _build_decisions_section(decisions: List[Dict[str, Any]]) -> str:
+    if not decisions:
+        return "### D000 - Decision Log Discipline\n- Promote executable ambiguities into fixed decisions before implementation.\n- Record any remaining gap explicitly in `.codex-research/decision_log.md`.\n"
+
+    blocks: List[str] = []
+    for entry in decisions:
+        title = entry.get("title", "Untitled Decision")
+        blocks.append(f"### {entry['id']} - {title}")
+        blocks.append(f"- Status: {entry.get('status', 'fixed')}")
+        blocks.append(f"- Decision: {entry.get('decision', '')}")
+        rationale = entry.get("rationale", [])
+        if isinstance(rationale, list) and rationale:
+            blocks.append("- Rationale:")
+            blocks.extend(f"  - {item}" for item in rationale)
+        impacts = entry.get("impacts", [])
+        if isinstance(impacts, list) and impacts:
+            blocks.append("- Impacts:")
+            blocks.extend(f"  - {item}" for item in impacts)
+        blocks.append("")
+    return "\n".join(blocks).rstrip() + "\n"
+
+
+def _build_milestone_summary(milestones: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for item in sorted(milestones, key=lambda value: _milestone_index(value["id"])):
+        suffix = f" ({item['phase']})" if item.get("phase") else ""
+        lines.append(f"- {item['id']}{suffix}: {item['title']}")
+    return "\n".join(lines) if lines else "- No milestones recorded."
+
+
+def _build_dataset_contract(dataset: Dict[str, Any]) -> str:
+    if not dataset:
+        return "Dataset contract was not specified in the plan. Record the canonical dataset root, required items, split policy, and fail-fast policy before implementation."
+
+    lines: List[str] = []
+    for key in ["name", "canonical_root", "root", "policy", "failure_policy"]:
+        value = dataset.get(key)
+        if value:
+            label = key.replace("_", " ").title()
+            lines.append(f"- {label}: `{value}`" if "root" in key else f"- {label}: {value}")
+    required_items = dataset.get("required_items")
+    if isinstance(required_items, list) and required_items:
+        lines.append("- Required items:")
+        lines.extend(f"  - `{item}`" for item in required_items)
+    split_policy = dataset.get("split_policy")
+    if split_policy:
+        lines.append(f"- Split policy: {split_policy}")
+    return "\n".join(lines) if lines else "- Dataset contract metadata is present but incomplete."
+
+
+def _build_environment_policy(environment: Dict[str, Any]) -> Tuple[str, str]:
+    conda_env = str(environment.get("conda_env", "<env>")).strip() or "<env>"
+    command_wrapper = str(
+        environment.get("command_wrapper", f"conda run -n {conda_env} bash -c '<command>'")
+    ).strip() or f"conda run -n {conda_env} bash -c '<command>'"
+    slurm_policy = str(
+        environment.get(
+            "gpu_policy",
+            "All GPU debug/train/eval/inference jobs must go through a Slurm guard before sbatch or srun.",
+        )
+    ).strip()
+    return command_wrapper, slurm_policy
+
+
+def _build_codex_workflow_doc(task_plan: Dict[str, Any], plan_path: Path, target_root: Path) -> str:
+    decisions = task_plan.get("decisions", [])
+    milestones = task_plan.get("milestones", [])
+    environment = task_plan.get("environment", {})
+    dataset = task_plan.get("dataset", {})
+    command_wrapper, slurm_policy = _build_environment_policy(environment)
+    v1_milestones = [item["id"] for item in milestones if item.get("phase") == "v1"]
+    phase2_milestones = [item["id"] for item in milestones if item.get("phase") == "phase-2"]
+
+    return f"""# CODEX Workflow
+
+## Single Source of Truth
+- `task_plan.json is the execution source of truth, feature_list.json is the capability map`.
+- `.codex-research/task_plan.json` is the execution truth source for task ordering, blockers, acceptance, and v1 completion.
+- `.codex-research/feature_list.json` is the capability map and must stay consistent with `task_refs` / `feature_refs`.
+- `.codex-research/decision_log.md` stores design freezes, justified bypasses, and unresolved gaps.
+- `.codex-research/session_progress.md` records the latest execution evidence and next step.
+- `.codex-research/run_registry.jsonl` records reproducible commands, seeds, commits, job ids, and artifact locations.
+- Source plan: `{plan_path.resolve()}`
+- Harness root: `{target_root.resolve()}`
+
+## Core Loop
+1. Read the files in this order: `.codex-research/task_plan.json`, `.codex-research/session_progress.md`, `.codex-research/decision_log.md`, `.codex-research/workflow/CODEX.md`.
+2. `只能选择依赖已满足的 passes=false 任务`.
+3. Check `blocking_decisions`, dataset contract, Slurm policy, and acceptance targets before editing code.
+4. Execute commands with `{command_wrapper}`.
+5. Collect evidence, update progress and decision logs, and record any run in `.codex-research/run_registry.jsonl`.
+6. `没有证据不能改 passes=true`.
+7. `任何 bypass 都必须写入 decision log`.
+
+## Dependency Discipline
+- Start a task only when every `depends_on` task exists and already has `passes=true`.
+- one-session-one-task remains mandatory.
+- `critical_path=false` means the task is phase-2 / non-blocking and does not block v1 Definition of Done.
+- v1 milestones: {', '.join(v1_milestones) if v1_milestones else 'not explicitly labeled'}.
+- phase-2 milestones: {', '.join(phase2_milestones) if phase2_milestones else 'not explicitly labeled'}.
+- If a blocker is missing from `blocking_decisions`, fix `task_plan.json` before implementation.
+
+## Fixed v1 Design Contracts
+{_build_decisions_section(decisions)}
+## Dataset Contract
+{_build_dataset_contract(dataset)}
+
+## Slurm / GPU Policy
+- Command wrapper: `{command_wrapper}`
+- Policy: {slurm_policy}
+- Do not run long GPU workloads directly on login nodes.
+- Slurm submission must return non-zero on failure and must emit a job id when it succeeds.
+
+## Evaluation Policy
+- Separate planner-only, motion-oracle, and end-to-end reports when those modes exist.
+- Metrics must have explicit definitions and artifact outputs in the task/decision contracts.
+- If an evaluator is missing, record the gap and do not invent metrics.
+- If a metric cannot be computed, keep the gap explicit in `decision_log.md` and acceptance evidence.
+
+## Task Completion Evidence Contract
+- A task can pass only with reproducible command evidence, relevant artifacts, and acceptance-mapped notes.
+- `没有证据不能改 passes=true`.
+- If code or data changed, add a run-registry entry or explicit note explaining why no run was needed.
+
+## GitHub Maintenance Channels
+### Issues
+- Use Issues for actionable bugs, implementation work, blockers, and scoped research tasks.
+- Each Issue should link the corresponding task id and milestone.
+
+### Pull Requests
+- Use Pull Requests for code or contract changes.
+- Keep one logical task per PR and include reproducible evidence.
+
+### Discussions
+- Use Discussions for unresolved design tradeoffs and evaluator gaps that still need a fixed decision.
+
+### Projects
+- Keep a board aligned with milestones and task state (`Backlog`, `Ready`, `In Progress`, `Review`, `Done`, `Blocked`).
+
+## Completion Gate
+- Do not declare v1 complete until every v1-blocking task is passed.
+- Non-critical phase-2 enhancements must not block v1 completion.
+- Milestone summary:
+{_build_milestone_summary(milestones)}
+"""
+
+
+def _build_cn_execution_guide(plan_path: Path, target_root: Path, task_plan: Dict[str, Any]) -> str:
     resolved_plan = str(plan_path.resolve())
     resolved_target = str(target_root.resolve())
+    project_name = str(task_plan.get("project", target_root.name)).strip() or target_root.name
     return f"""# Codex 执行指南（中文）
 
-本文档说明：当 `.codex-research/` 已经由本 skill 生成后，如何让 Codex 快速了解当前项目进度并按既有流程继续推进。
+适用项目：`{project_name}`
 
 ## 0. 前置信息
-
 - 源计划文件：`{resolved_plan}`
 - 项目根目录：`{resolved_target}`
-- 任务计划文件：`.codex-research/task_plan.json`
+- `task_plan.json` 是执行真相源，`feature_list.json` 是能力映射。
 
-## 1. 先阅读代表当前进度的文档
+## 1. 先看哪些文件
+1. `.codex-research/task_plan.json`
+2. `.codex-research/session_progress.md`
+3. `.codex-research/decision_log.md`
+4. `.codex-research/workflow/CODEX.md`
 
-1. 阅读 `.codex-research/task_plan.json`，定位 `passes=false` 的代表性任务。
-2. 阅读 `.codex-research/session_progress.md`，理解最近进展、阻塞点和下一步。
-3. 阅读 `.codex-research/decision_log.md`，理解关键决策和历史原因。
-4. 视需要阅读 `.codex-research/feature_list.json`，对齐功能级完成标准。
+补充阅读：`.codex-research/feature_list.json` 用于能力映射核对，不替代任务执行顺序。
 
-流程上的问题可以查看：`.codex-research/workflow/CODEX.md`。
-
-## 2. 在 Codex 会话里推进任务（手动模式）
-
+## 2. 任务选择规则
 1. 一次会话只推进一个任务（one-session-one-task）。
-2. 先说明“已阅读 task/progress/decision/workflow 文档”，再开始实现。
-3. 完成后记录验证证据并更新相关文档。
-4. 只有在有验证证据时，才把对应任务标记为 `passes=true`。
+2. `只能选择依赖已满足的 passes=false 任务`。
+3. 如果 `blocking_decisions` 未闭合，先补 decision，再动代码。
+4. `没有证据不能改 passes=true`。
+5. `任何 bypass 都必须写入 decision log`。
 
-## 3. 推荐给 Codex 的工作提示词（示例）
+## 3. 典型执行顺序
+1. 先从 `task_plan.json` 找到依赖满足的未完成任务。
+2. 对照 `CODEX.md` 里的固定设计合同、数据合同、Slurm / GPU 规则和评估规则。
+3. 执行实现、训练、推理或验证命令。
+4. 回写 `session_progress.md`、`decision_log.md`、`run_registry.jsonl`。
+5. 只有在 acceptance 证据闭合后，才更新 `task_plan.json` / `feature_list.json` 的 `passes`。
 
+## 4. 给 Codex 的最小工作指令
 ```text
-请先阅读 .codex-research/task_plan.json、.codex-research/session_progress.md、
-.codex-research/decision_log.md，并参考 .codex-research/workflow/CODEX.md 的流程，
-选择一个 passes=false 的任务推进；完成后回写 progress/decision，并仅在有验证证据时更新 passes。
+请先阅读 .codex-research/task_plan.json、.codex-research/session_progress.md、.codex-research/decision_log.md、.codex-research/workflow/CODEX.md，
+只选择依赖已满足的 passes=false 任务推进；完成后回写 progress/decision/run registry，并且没有证据不要改 passes=true。
 ```
-
-## 4. 每次任务完成后必须回写
-
-- `.codex-research/session_progress.md`：记录本次做了什么、验证证据、下一步。
-- `.codex-research/decision_log.md`：记录新增或变更的关键决策。
-- `.codex-research/task_plan.json` / `.codex-research/feature_list.json`：仅在证据充分时更新 `passes`。
 """
+
+
+def _validate_codex_workflow_content(content: str) -> None:
+    for section in REQUIRED_CODEX_SECTIONS:
+        if section not in content:
+            raise SystemExit(f"workflow/CODEX.md missing required section: {section}")
+    for phrase in REQUIRED_CODEX_PHRASES:
+        if phrase not in content:
+            raise SystemExit(f"workflow/CODEX.md missing required contract phrase: {phrase}")
+
+
+def _validate_execution_guide_content(content: str) -> None:
+    if "## 1. 先看哪些文件" not in content:
+        raise SystemExit("execution guide missing dedicated read-first section")
+    for path in REQUIRED_READ_FIRST_FILES:
+        if path not in content:
+            raise SystemExit(f"execution guide missing required read-first file: {path}")
+    for phrase in [
+        "只能选择依赖已满足的 passes=false 任务",
+        "没有证据不能改 passes=true",
+        "任何 bypass 都必须写入 decision log",
+    ]:
+        if phrase not in content:
+            raise SystemExit(f"execution guide missing required phrase: {phrase}")
+
+
+def _validate_file_map_contract(file_map: Dict[str, str]) -> None:
+    for forbidden_path in sorted(FORBIDDEN_GENERATED_PATHS):
+        if forbidden_path in file_map:
+            raise SystemExit(f"generated bundle contains forbidden path: {forbidden_path}")
+    for path, content in file_map.items():
+        if BYPASS_FLAG in content:
+            raise SystemExit(f"generated file injects forbidden bypass flag: {path}")
+    _validate_codex_workflow_content(file_map[CODEX_WORKFLOW_PATH])
+    _validate_execution_guide_content(file_map[CN_EXEC_GUIDE_PATH])
+
+
+def _validate_bundle_contract(bundle: Dict[str, Any], *, expect_initial_state: bool) -> None:
+    _validate_task_feature_mappings(
+        bundle["feature_list"],
+        bundle["task_plan"],
+        expect_initial_state=expect_initial_state,
+    )
+    _validate_file_map_contract(bundle["file_map"])
 
 
 def _run_codex_analysis(plan_path: Path, target_root: Path, model: str) -> Dict[str, Any]:
@@ -545,8 +1226,17 @@ def _normalize_analysis(raw_analysis: Dict[str, Any], plan_path: Path) -> Dict[s
     if len(summary) < 20:
         raise SystemExit("codex summary is too short; expected detailed generation summary")
 
-    feature_list = _normalize_feature_list(raw_analysis.get("feature_list"))
-    task_plan = _normalize_task_plan(raw_analysis.get("task_plan"), plan_path, generated_at)
+    feature_list = _normalize_feature_list(
+        raw_analysis.get("feature_list"),
+        expect_initial_state=True,
+    )
+    task_plan = _normalize_task_plan(
+        raw_analysis.get("task_plan"),
+        plan_path,
+        generated_at,
+        expect_initial_state=True,
+    )
+    _validate_task_feature_mappings(feature_list, task_plan, expect_initial_state=True)
 
     required_map: Dict[str, str] = {}
     required_order: List[str] = []
@@ -626,6 +1316,8 @@ def _run_codex_single_file(
     content = result.get("content")
     if not isinstance(content, str):
         raise SystemExit(f"single-file codex output content must be string: {target_path}")
+    if BYPASS_FLAG in content:
+        raise SystemExit(f"single-file codex output injects forbidden bypass flag: {target_path}")
 
     gen_reason = str(result.get("reason", "")).strip() or reason or DEFAULT_REASON
     executable = bool(result.get("executable", False))
@@ -684,6 +1376,8 @@ def _run_codex_file_bundle(
         content = entry.get("content")
         if not isinstance(content, str):
             raise SystemExit(f"bundle files[{idx}].content must be a string: {path}")
+        if BYPASS_FLAG in content:
+            raise SystemExit(f"bundle files[{idx}] injects forbidden bypass flag: {path}")
 
         reason = str(entry.get("reason", "")).strip() or required_map[path] or DEFAULT_REASON
         executable = bool(entry.get("executable", False))
@@ -735,17 +1429,18 @@ def _materialize_generated_bundle(
     file_order: List[str] = list(file_bundle["file_order"])
     executable_paths: Set[str] = set(file_bundle["executable_paths"])
 
-    # Keep gate files deterministic and validated locally.
     file_map[".codex-research/feature_list.json"] = as_json_pretty(file_bundle["feature_list"])
     file_map[".codex-research/task_plan.json"] = as_json_pretty(file_bundle["task_plan"])
-    file_map[CN_EXEC_GUIDE_PATH] = _build_cn_execution_guide(
+    file_map[CODEX_WORKFLOW_PATH] = _build_codex_workflow_doc(
+        file_bundle["task_plan"],
         plan_path=plan_path,
         target_root=target_root,
     )
-    if WORKFLOW_CODEX_PATH in file_map:
-        file_map[WORKFLOW_CODEX_PATH] = _ensure_workflow_github_channel(
-            file_map[WORKFLOW_CODEX_PATH]
-        )
+    file_map[CN_EXEC_GUIDE_PATH] = _build_cn_execution_guide(
+        plan_path=plan_path,
+        target_root=target_root,
+        task_plan=file_bundle["task_plan"],
+    )
 
     missing_required = [path for path in required_paths if path not in file_map]
     if missing_required:
@@ -766,7 +1461,7 @@ def _materialize_generated_bundle(
     if missing_core:
         raise SystemExit("generated files missing core paths: " + ", ".join(missing_core))
 
-    return {
+    bundle = {
         "generated_at": file_bundle["generated_at"],
         "plan_path": file_bundle["plan_path"],
         "source": file_bundle["source"],
@@ -778,6 +1473,8 @@ def _materialize_generated_bundle(
         "file_order": file_order,
         "executable_paths": sorted(executable_paths),
     }
+    _validate_bundle_contract(bundle, expect_initial_state=True)
+    return bundle
 
 
 def load_bundle(plan_path: Path, target_root: Path, codex_model: str) -> Dict[str, Any]:
@@ -807,30 +1504,67 @@ def chmod_if_shell(path: Path) -> None:
         path.chmod(current | 0o111)
 
 
-def cmd_extract(args: argparse.Namespace) -> int:
-    plan_path = Path(args.plan).resolve()
-    target_root = Path(args.target).resolve() if args.target else plan_path.parent
-    out_path = Path(args.out).resolve()
+def validate_scaffold_directory(target_root: Path, *, expect_initial_state: bool) -> Dict[str, Any]:
+    research_root = target_root / ".codex-research"
+    feature_path = research_root / "feature_list.json"
+    task_path = research_root / "task_plan.json"
+    required_path = research_root / "required_files.json"
+    workflow_path = research_root / "workflow" / "CODEX.md"
+    guide_path = research_root / "execution_guide.zh-CN.md"
 
-    analysis = load_analysis(plan_path=plan_path, target_root=target_root, codex_model=args.codex_model)
+    for path in [feature_path, task_path, required_path, workflow_path, guide_path]:
+        if not path.exists():
+            raise SystemExit(f"required scaffold file missing: {path}")
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        as_json_pretty(
-            {
-                "generated_at": analysis["generated_at"],
-                "plan_path": analysis["plan_path"],
-                "source": analysis["source"],
-                "summary": analysis["summary"],
-                "required_files": analysis["required_files"],
-                "feature_list": analysis["feature_list"],
-                "task_plan": analysis["task_plan"],
-            }
-        ),
-        encoding="utf-8",
+    feature_raw = json.loads(feature_path.read_text(encoding="utf-8"))
+    task_raw = json.loads(task_path.read_text(encoding="utf-8"))
+    required_raw = json.loads(required_path.read_text(encoding="utf-8"))
+
+    feature_list = _normalize_feature_list(feature_raw, expect_initial_state=expect_initial_state)
+    generated_at = str(task_raw.get("generated_at", iso_now())).strip() or iso_now()
+    task_plan = _normalize_task_plan(
+        task_raw,
+        plan_path=task_path,
+        generated_at=generated_at,
+        expect_initial_state=expect_initial_state,
     )
-    print(f"[extract] wrote {out_path}")
-    return 0
+    _validate_task_feature_mappings(
+        feature_list,
+        task_plan,
+        expect_initial_state=expect_initial_state,
+    )
+
+    required_files = required_raw.get("required_files")
+    if not isinstance(required_files, list) or not required_files:
+        raise SystemExit("required_files.json missing non-empty required_files list")
+
+    required_paths: List[str] = []
+    for idx, entry in enumerate(required_files, start=1):
+        if not isinstance(entry, dict):
+            raise SystemExit(f"required_files.json entry {idx} must be an object")
+        path = normalize_rel_path(str(entry.get("path", "")))
+        required_paths.append(path)
+        if not (target_root / path).exists():
+            raise SystemExit(f"required_files.json references missing file: {path}")
+
+    missing_core = [path for path in CORE_REQUIRED_PATHS if path not in required_paths]
+    if missing_core:
+        raise SystemExit(
+            "required_files.json missing mandatory core paths: " + ", ".join(missing_core)
+        )
+
+    workflow_content = workflow_path.read_text(encoding="utf-8")
+    guide_content = guide_path.read_text(encoding="utf-8")
+    _validate_codex_workflow_content(workflow_content)
+    _validate_execution_guide_content(guide_content)
+
+    return {
+        "target": str(target_root.resolve()),
+        "task_count": len(task_plan["tasks"]),
+        "feature_count": len(feature_list),
+        "milestone_count": len(task_plan.get("milestones", [])),
+        "expect_initial_state": expect_initial_state,
+    }
 
 
 def bootstrap_from_bundle(
@@ -862,12 +1596,39 @@ def bootstrap_from_bundle(
     return created, skipped
 
 
+def cmd_extract(args: argparse.Namespace) -> int:
+    plan_path = Path(args.plan).resolve()
+    target_root = Path(args.target).resolve() if args.target else plan_path.parent
+    out_path = Path(args.out).resolve()
+
+    analysis = load_analysis(plan_path=plan_path, target_root=target_root, codex_model=args.codex_model)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        as_json_pretty(
+            {
+                "generated_at": analysis["generated_at"],
+                "plan_path": analysis["plan_path"],
+                "source": analysis["source"],
+                "summary": analysis["summary"],
+                "required_files": analysis["required_files"],
+                "feature_list": analysis["feature_list"],
+                "task_plan": analysis["task_plan"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    print(f"[extract] wrote {out_path}")
+    return 0
+
+
 def cmd_bootstrap(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan).resolve()
     target_root = Path(args.target).resolve()
     bundle = load_bundle(plan_path=plan_path, target_root=target_root, codex_model=args.codex_model)
 
     created, skipped = bootstrap_from_bundle(target_root, bundle, args.force)
+    print(f"[bootstrap] validated bundle: tasks={len(bundle['task_plan']['tasks'])} features={len(bundle['feature_list'])}")
     print(f"[bootstrap] done: created={created}, skipped={skipped}")
     return 0
 
@@ -877,7 +1638,6 @@ def cmd_gen_doc(args: argparse.Namespace) -> int:
     target_root = Path(args.target).resolve()
     analysis = load_analysis(plan_path=plan_path, target_root=target_root, codex_model=args.codex_model)
 
-    # Only one file generation call for gen-doc mode.
     mechanism_entry = _run_codex_single_file(
         plan_path=plan_path,
         target_root=target_root,
@@ -923,7 +1683,23 @@ def cmd_all(args: argparse.Namespace) -> int:
     mechanism_path = target_root / ".codex-research/MECHANISM.md"
     print(f"[all] wrote manifest: {extract_path}")
     print(f"[all] wrote mechanism: {mechanism_path}")
+    print(f"[all] validated bundle: tasks={len(bundle['task_plan']['tasks'])} features={len(bundle['feature_list'])}")
     print(f"[all] done: created={created}, skipped={skipped}")
+    return 0
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    target_root = Path(args.target).resolve()
+    result = validate_scaffold_directory(
+        target_root,
+        expect_initial_state=not args.allow_progress,
+    )
+    print(
+        "[validate] ok "
+        f"target={result['target']} tasks={result['task_count']} "
+        f"features={result['feature_count']} milestones={result['milestone_count']} "
+        f"expect_initial_state={result['expect_initial_state']}"
+    )
     return 0
 
 
@@ -963,6 +1739,15 @@ def build_parser() -> argparse.ArgumentParser:
     all_cmd.add_argument("--force", action="store_true", help="Overwrite existing files")
     all_cmd.add_argument("--codex-model", default="", help="Optional Codex model override")
     all_cmd.set_defaults(func=cmd_all)
+
+    validate = sub.add_parser("validate", help="Validate an existing generated scaffold")
+    validate.add_argument("--target", required=True, help="Target project root")
+    validate.add_argument(
+        "--allow-progress",
+        action="store_true",
+        help="Allow passes=true for already-progressed scaffolds",
+    )
+    validate.set_defaults(func=cmd_validate)
 
     return parser
 

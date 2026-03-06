@@ -94,10 +94,10 @@ RAW_OUTPUT="$TMP_DIR/raw_output.txt"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 cat > "$PROMPT_PATH" <<'EOF'
-You are preparing a deep-learning research plan for deterministic rule-based parsing.
+You are preparing a deep-learning research plan for deterministic scaffold generation.
 
 Task:
-Rewrite the source plan into a normalized markdown document while preserving the original intent.
+Rewrite the source plan into a normalized markdown document while preserving the original intent, while also fixing enough execution contract detail for downstream scaffold generation.
 
 Hard requirements:
 1. Return only markdown text. No code fences, no XML, no explanation outside the markdown.
@@ -105,22 +105,34 @@ Hard requirements:
    # Normalized Research Plan
    ## Objectives
    ## Constraints
+   ## v1 Mainline vs Phase-2 Enhancements
+   ## Fixed Decisions
    ## Environment and Resources
+   ## Dataset Contract
+   ## Train-Eval-Inference Contract
+   ## Metric and Artifact Contract
+   ## Slurm / GPU Contract
    ## Milestones
    ## Task Checklist
    ## Evaluation and Success Criteria
    ## Execution Signals
    ## Risks and Mitigations
-   ## Open Questions
+   ## Open Questions and Recorded Gaps
    ## Source Mapping
 3. Under "Task Checklist", every item must be a markdown checkbox: "- [ ] ...".
-4. Under "Execution Signals", list only applicable signals as bullet items in format:
+4. Under "v1 Mainline vs Phase-2 Enhancements", explicitly separate v1-blocking work from non-blocking enhancements.
+5. Under "Fixed Decisions", actively convert actionable ambiguities into fixed decisions with identifiers like "- D001: ...". Only keep truly unresolved items in the gaps section.
+6. Under "Milestones", use continuous milestone ids like "- M0: ...", "- M1: ...".
+7. Under "Train-Eval-Inference Contract", write down the motion/planner conditioning contract if the source plan implies one.
+8. Under "Metric and Artifact Contract", write fixed metric definitions and artifact expectations. If an evaluator is missing, record a gap instead of inventing metrics.
+9. Under "Slurm / GPU Contract", write a concrete executable policy when the plan implies cluster usage.
+10. Under "Execution Signals", list only applicable signals as bullet items in format:
    - <signal>: <short reason>
    Allowed signal names: slurm, wandb, huggingface, webdataset, evaluation, inference.
    If none apply, write exactly: "- none".
-5. Do not invent concrete experimental results, datasets, or hard constraints not present in the source.
-6. If the source is ambiguous, keep uncertainty in "Open Questions" instead of guessing.
-7. In "Source Mapping", map major normalized items back to specific source fragments.
+11. Do not invent concrete experimental results, datasets, or hard constraints not supported by the source.
+12. Use enough detail that a downstream generator can create task_plan.json, feature_list.json, CODEX.md, and Slurm/dataset/metric contracts without guessing.
+13. In "Source Mapping", map major normalized items back to specific source fragments.
 
 Source plan begins below:
 EOF
@@ -166,13 +178,19 @@ required_sections = [
     "# Normalized Research Plan",
     "## Objectives",
     "## Constraints",
+    "## v1 Mainline vs Phase-2 Enhancements",
+    "## Fixed Decisions",
     "## Environment and Resources",
+    "## Dataset Contract",
+    "## Train-Eval-Inference Contract",
+    "## Metric and Artifact Contract",
+    "## Slurm / GPU Contract",
     "## Milestones",
     "## Task Checklist",
     "## Evaluation and Success Criteria",
     "## Execution Signals",
     "## Risks and Mitigations",
-    "## Open Questions",
+    "## Open Questions and Recorded Gaps",
     "## Source Mapping",
 ]
 
@@ -187,6 +205,16 @@ for section in required_sections:
 
 if not re.search(r"(?m)^\s*-\s*\[\s\]\s+.+$", src):
     raise SystemExit("normalized plan has no checkbox items under task checklist")
+
+if not re.search(r"(?m)^\s*-\s*D[0-9]{3}\s*:\s+.+$", src):
+    raise SystemExit("normalized plan must include at least one fixed decision bullet like '- D001: ...'")
+
+milestone_lines = re.findall(r"(?m)^\s*-\s*M([0-9]+)\s*:\s+.+$", src)
+if not milestone_lines:
+    raise SystemExit("normalized plan must include milestone bullets like '- M0: ...'")
+milestone_numbers = sorted(int(item) for item in milestone_lines)
+if milestone_numbers != list(range(milestone_numbers[0], milestone_numbers[-1] + 1)):
+    raise SystemExit("normalized plan milestone ids must be continuous like M0..Mn")
 
 allowed_signals = {"slurm", "wandb", "huggingface", "webdataset", "evaluation", "inference"}
 lines_raw = src.splitlines()
