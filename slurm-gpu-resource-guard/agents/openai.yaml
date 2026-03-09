@@ -1,0 +1,4 @@
+interface:
+  display_name: "Slurm GPU Guard"
+  short_description: "Queue checks, renewals, SSH+nohup launch"
+  default_prompt: "Use $slurm-gpu-resource-guard to check ts1v23 allocations, renew GPU jobs when needed, and run long training via SSH + nohup on the allocated node."
